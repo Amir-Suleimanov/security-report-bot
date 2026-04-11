@@ -1,0 +1,6 @@
+[nginx-vulnscan]
+ignoreip = 127.0.0.1/8 ::1 193.33.240.0/24
+
+[nginx-botsearch]
+ignoreip = 127.0.0.1/8 ::1 193.33.240.0/24
+

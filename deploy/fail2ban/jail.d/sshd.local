@@ -1,0 +1,4 @@
+[sshd]
+bantime = 24h
+bantime.increment = false
+

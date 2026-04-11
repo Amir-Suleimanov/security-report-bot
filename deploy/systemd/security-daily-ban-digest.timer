@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Security Daily Ban Digest at 23:50 UTC
+
+[Timer]
+OnCalendar=*-*-* 23:50:00 UTC
+Persistent=true
+Unit=security-daily-ban-digest.service
+
+[Install]
+WantedBy=timers.target
