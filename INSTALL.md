@@ -106,6 +106,12 @@ sudo editor /etc/security-report-bot/scan-whitelist.txt
 sudo touch /etc/security-report-bot/scan-whitelist.txt
 ```
 
+Шаблоны уже включают Cloudflare CIDR по умолчанию:
+- `nginx-allowlist.local.example` для `fail2ban ignoreip`
+- `scan-whitelist.txt` для Telegram-бота
+
+Бот понимает не только отдельные IP, но и CIDR-сети.
+
 Перезапустить `fail2ban`:
 
 ```bash
