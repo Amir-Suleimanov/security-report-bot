@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -67,6 +68,12 @@ class ReportSnapshot:
     connections: list[HttpConnection]
 
 
+@dataclass(slots=True)
+class Allowlist:
+    exact_ips: set[str]
+    networks: list[ipaddress._BaseNetwork]
+
+
 class Reporter:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -86,18 +93,18 @@ class Reporter:
         active_http = await self._run("ss -Htn '( sport = :80 or sport = :443 )'")
 
         banned_ips = self._extract_ban_list(nginx_vulnscan)
-        allowlisted_ips = self._load_allowlisted_ips(self.settings.allowlist_path)
+        allowlist = self._load_allowlist(self.settings.allowlist_path)
         suspicious = self._summarize_suspicious_requests(
             access_log,
             now=now,
             window_sec=window_sec,
             banned_ips=set(banned_ips),
-            allowlisted_ips=allowlisted_ips,
+            allowlist=allowlist,
         )
         banned_today = self._summarize_banned_today(
             access_log,
             banned_ips=set(banned_ips),
-            allowlisted_ips=allowlisted_ips,
+            allowlist=allowlist,
             today=now.date(),
         )
         connections = self._parse_connections(active_http)
@@ -192,7 +199,7 @@ class Reporter:
         now: datetime,
         window_sec: int,
         banned_ips: set[str],
-        allowlisted_ips: set[str],
+        allowlist: Allowlist,
     ) -> list[SuspiciousRequest]:
         threshold = now - timedelta(seconds=window_sec)
         items: dict[tuple[str, str, str], SuspiciousRequest] = {}
@@ -226,7 +233,7 @@ class Reporter:
                     count=1,
                     last_seen=ts,
                     banned=ip in banned_ips,
-                    whitelisted=ip in allowlisted_ips,
+                    whitelisted=self._is_allowlisted(ip, allowlist),
                     user_agent=user_agent,
                 )
                 continue
@@ -235,7 +242,7 @@ class Reporter:
             if ts > item.last_seen:
                 item.last_seen = ts
             item.banned = item.banned or ip in banned_ips
-            item.whitelisted = item.whitelisted or ip in allowlisted_ips
+            item.whitelisted = item.whitelisted or self._is_allowlisted(ip, allowlist)
             if not item.user_agent and user_agent:
                 item.user_agent = user_agent
 
@@ -260,14 +267,33 @@ class Reporter:
         return connections
 
     @staticmethod
-    def _load_allowlisted_ips(path) -> set[str]:
+    def _load_allowlist(path) -> Allowlist:
         if not path.exists():
-            return set()
-        return {
-            line.strip()
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("#")
-        }
+            return Allowlist(exact_ips=set(), networks=[])
+        exact_ips: set[str] = set()
+        networks: list[ipaddress._BaseNetwork] = []
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "/" in line:
+                try:
+                    networks.append(ipaddress.ip_network(line, strict=False))
+                    continue
+                except ValueError:
+                    pass
+            exact_ips.add(line)
+        return Allowlist(exact_ips=exact_ips, networks=networks)
+
+    @staticmethod
+    def _is_allowlisted(ip: str, allowlist: Allowlist) -> bool:
+        if ip in allowlist.exact_ips:
+            return True
+        try:
+            parsed_ip = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        return any(parsed_ip in network for network in allowlist.networks)
 
     @staticmethod
     def _extract_ban_list(text: str) -> list[str]:
@@ -281,7 +307,7 @@ class Reporter:
         self,
         access_log: str,
         banned_ips: set[str],
-        allowlisted_ips: set[str],
+        allowlist: Allowlist,
         today: object,
     ) -> list[str]:
         first_seen: dict[str, datetime] = {}
@@ -290,7 +316,7 @@ class Reporter:
             if match is None:
                 continue
             ip = match.group("ip")
-            if ip not in banned_ips or ip in allowlisted_ips:
+            if ip not in banned_ips or self._is_allowlisted(ip, allowlist):
                 continue
             user_agent = match.group("ua")
             if _TRUSTED_UA_RE.search(user_agent):
