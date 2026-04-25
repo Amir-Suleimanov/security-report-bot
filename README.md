@@ -177,6 +177,11 @@ chmod 600 /etc/default/security-report-bot
 в:
 - `/etc/nginx/conf.d/cloudflare-realip.conf`
 
+Для раннего дропа scanner-проб с последующим баном добавьте в публичные server block ещё и:
+- [deploy/nginx/scanner-drop-locations.conf.template](deploy/nginx/scanner-drop-locations.conf.template)
+
+Этот snippet не выключает логирование, а пишет такие запросы в `/var/log/nginx/scanner-drop.log`, чтобы их видел `fail2ban`.
+
 После этого:
 
 ```bash
@@ -196,6 +201,10 @@ sudo systemctl reload nginx
 в соответствующие каталоги на сервере:
 - `/etc/fail2ban/filter.d/`
 - `/etc/fail2ban/jail.d/`
+
+`nginx-vulnscan.local` уже ожидает два источника логов:
+- `/var/log/nginx/access.log`
+- `/var/log/nginx/scanner-drop.log`
 
 Если нужен allowlist, создайте:
 - `/etc/security-report-bot/scan-whitelist.txt`

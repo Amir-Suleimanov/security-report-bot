@@ -3,9 +3,9 @@ enabled = true
 filter = nginx-vulnscan
 port = http,https
 logpath = /var/log/nginx/access.log
+          /var/log/nginx/scanner-drop.log
 backend = polling
 maxretry = 1
 findtime = 10m
 bantime = -1
 banaction = ufw
-

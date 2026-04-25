@@ -82,6 +82,14 @@ sudo systemctl reload nginx
 
 Если используется другой reverse proxy или CDN, настройте эквивалентный real IP механизм вручную.
 
+Для раннего дропа scanner-проб с последующим баном встроите snippet:
+
+```bash
+deploy/nginx/scanner-drop-locations.conf.template
+```
+
+в каждый публичный `server` block сайта. Он пишет такие запросы в `/var/log/nginx/scanner-drop.log`, чтобы их видел `fail2ban`.
+
 ## 7. Настроить fail2ban filter и jails
 
 ```bash

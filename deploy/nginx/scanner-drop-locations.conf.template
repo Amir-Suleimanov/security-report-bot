@@ -1,0 +1,12 @@
+# Include these locations inside each public server block that proxies the main site.
+# The goal is to drop obvious probes early, but still log them so fail2ban can ban.
+
+location ~* ^/(wp-admin|wp-login\.php|xmlrpc\.php|phpmyadmin|pma|cgi-bin|\.env|\.git|vendor/phpunit|boaform|HNAP1|manager/(?:html|text)|actuator|druid|GponForm|authLogin\.cgi|wordpress/wp-admin|wp/wp-admin|new/wp-admin|old/wp-admin|blog/wp-admin|test/wp-admin|shop/wp-admin) {
+    access_log /var/log/nginx/scanner-drop.log combined;
+    return 444;
+}
+
+location ~ /\.(?!well-known) {
+    access_log /var/log/nginx/scanner-drop.log combined;
+    deny all;
+}
