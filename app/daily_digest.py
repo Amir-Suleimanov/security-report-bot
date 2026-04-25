@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import html
-import subprocess
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
 
 from app.config import Settings
+from app.fail2ban_db import load_banned_ips_for_day
 from app.nginx_logs import iter_log_lines
-from app.reporting import _LOG_RE, Reporter
+from app.reporting import _LOG_RE
 from app.signatures import (
     SCANNER_UA_RE as _SCANNER_UA_RE,
     SUSPICIOUS_PATH_RE as _SUSPICIOUS_PATH_RE,
@@ -18,20 +18,7 @@ from app.signatures import (
     TRUSTED_UA_RE as _TRUSTED_UA_RE,
 )
 
-
-def run(command: str) -> str:
-    proc = subprocess.run(["bash", "-lc", command], check=True, capture_output=True, text=True)
-    return proc.stdout.strip()
-
-
-def parse_banned_ips() -> list[str]:
-    status = run("fail2ban-client status nginx-vulnscan")
-    for line in status.splitlines():
-        if "Banned IP list:" in line:
-            return [item for item in line.split(":", 1)[1].strip().split() if item]
-    return []
 def build_daily_digest(report_day: datetime.date, banned_ips: set[str]) -> tuple[int, str]:
-    first_seen: dict[str, datetime] = {}
     daily_paths: dict[str, list[str]] = defaultdict(list)
 
     for line in iter_log_lines():
@@ -56,14 +43,12 @@ def build_daily_digest(report_day: datetime.date, banned_ips: set[str]) -> tuple
             continue
 
         ts = datetime.strptime(match.group("ts"), "%d/%b/%Y:%H:%M:%S %z").astimezone(UTC)
-        if ip not in first_seen or ts < first_seen[ip]:
-            first_seen[ip] = ts
         if ts.date() == report_day:
             entry = f"{method} {path}"
             if entry not in daily_paths[ip]:
                 daily_paths[ip].append(entry)
 
-    new_ips = sorted(ip for ip, seen in first_seen.items() if seen.date() == report_day and daily_paths.get(ip))
+    new_ips = sorted(ip for ip in banned_ips if daily_paths.get(ip))
     if not new_ips:
         return 0, (
             "<b>Новые баны за день</b>\n"
@@ -102,9 +87,7 @@ async def main() -> None:
     settings = Settings.load()
     now = datetime.now(UTC)
     report_day = (now - timedelta(days=1)).date() if now.hour < 2 else now.date()
-    reporter = Reporter(settings)
-    manual_denylist = reporter._load_allowlist(settings.manual_denylist_path)
-    banned_ips = set(parse_banned_ips()) | set(manual_denylist.entries)
+    banned_ips = set(load_banned_ips_for_day(settings.fail2ban_db_path, "nginx-vulnscan", report_day))
     _, message = build_daily_digest(report_day, banned_ips)
     await send_summary(settings, message)
 

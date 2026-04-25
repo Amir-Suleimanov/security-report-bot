@@ -12,11 +12,14 @@ class Settings:
     default_interval_sec: int
     poll_interval_sec: int
     state_db_path: Path
+    fail2ban_db_path: Path
     report_title: str
     monitored_service_name: str
     monitored_service_label: str
     allowlist_path: Path
     manual_denylist_path: Path
+    fail2ban_ignore_base_path: Path
+    fail2ban_ignore_output_path: Path
 
     @classmethod
     def load(cls) -> "Settings":
@@ -29,6 +32,7 @@ class Settings:
         default_interval_sec = int(os.environ.get("DEFAULT_REPORT_INTERVAL_SEC", "10800"))
         poll_interval_sec = int(os.environ.get("SCHEDULER_POLL_INTERVAL_SEC", "30"))
         state_db_path = Path(os.environ.get("STATE_DB_PATH", "/var/lib/security-report-bot/state.db"))
+        fail2ban_db_path = Path(os.environ.get("FAIL2BAN_DB_PATH", "/var/lib/fail2ban/fail2ban.sqlite3"))
         report_title = os.environ.get("REPORT_TITLE", "Отчёт безопасности сервера").strip() or "Отчёт безопасности сервера"
         monitored_service_name = os.environ.get("MONITORED_SERVICE_NAME", "").strip()
         monitored_service_label = os.environ.get("MONITORED_SERVICE_LABEL", "").strip() or monitored_service_name
@@ -36,15 +40,24 @@ class Settings:
         manual_denylist_path = Path(
             os.environ.get("MANUAL_DENYLIST_PATH", "/etc/security-report-bot/manual-denylist.txt")
         )
+        fail2ban_ignore_base_path = Path(
+            os.environ.get("FAIL2BAN_IGNORE_BASE_PATH", "/etc/security-report-bot/fail2ban-ignore-base.txt")
+        )
+        fail2ban_ignore_output_path = Path(
+            os.environ.get("FAIL2BAN_IGNORE_OUTPUT_PATH", "/etc/fail2ban/jail.d/nginx-allowlist.local")
+        )
         return cls(
             bot_token=bot_token,
             allowed_chat_ids=allowed_chat_ids,
             default_interval_sec=default_interval_sec,
             poll_interval_sec=poll_interval_sec,
             state_db_path=state_db_path,
+            fail2ban_db_path=fail2ban_db_path,
             report_title=report_title,
             monitored_service_name=monitored_service_name,
             monitored_service_label=monitored_service_label,
             allowlist_path=allowlist_path,
             manual_denylist_path=manual_denylist_path,
+            fail2ban_ignore_base_path=fail2ban_ignore_base_path,
+            fail2ban_ignore_output_path=fail2ban_ignore_output_path,
         )

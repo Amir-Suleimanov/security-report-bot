@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 
 from app.config import Settings
+from app.fail2ban_db import load_banned_ips_for_day
 from app.nginx_logs import iter_log_lines
 from app.signatures import (
     SCANNER_UA_RE as _SCANNER_UA_RE,
@@ -81,16 +82,16 @@ class Reporter:
         active_http = await self._run("ss -Htn '( sport = :80 or sport = :443 )'")
 
         fail2ban_banned_ips = self._extract_ban_list(nginx_vulnscan)
+        banned_today = load_banned_ips_for_day(self.settings.fail2ban_db_path, "nginx-vulnscan", now.date())
         allowlist = self._load_allowlist(self.settings.allowlist_path)
         manual_denylist = self._load_allowlist(self.settings.manual_denylist_path)
         blocked_entries = sorted(set(fail2ban_banned_ips) | set(manual_denylist.entries))
-        suspicious, banned_today = self._analyze_logs(
+        suspicious = self._analyze_logs(
             now=now,
             window_sec=window_sec,
             banned_ips=set(fail2ban_banned_ips),
             allowlist=allowlist,
             manual_denylist=manual_denylist,
-            today=now.date(),
         )
         connections = self._parse_connections(active_http)
 
@@ -188,11 +189,9 @@ class Reporter:
         banned_ips: set[str],
         allowlist: Allowlist,
         manual_denylist: Allowlist,
-        today: object,
-    ) -> tuple[list[SuspiciousRequest], list[str]]:
+    ) -> list[SuspiciousRequest]:
         threshold = now - timedelta(seconds=window_sec)
         items: dict[tuple[str, str, str], SuspiciousRequest] = {}
-        first_seen: dict[str, datetime] = {}
 
         for line in iter_log_lines():
             match = _LOG_RE.match(line)
@@ -213,9 +212,6 @@ class Reporter:
                 continue
             ip = match.group("ip")
             is_manually_denied = self._is_allowlisted(ip, manual_denylist)
-            if (ip in banned_ips or is_manually_denied) and not self._is_allowlisted(ip, allowlist):
-                if ip not in first_seen or ts < first_seen[ip]:
-                    first_seen[ip] = ts
             if ts < threshold:
                 continue
             key = (ip, method, path)
@@ -244,8 +240,7 @@ class Reporter:
             items.values(),
             key=lambda item: (-item.count, item.banned, item.last_seen, item.ip, item.path),
         )[:10]
-        banned_today = sorted(ip for ip, ts in first_seen.items() if ts.date() == today)
-        return suspicious, banned_today
+        return suspicious
 
     @staticmethod
     def _parse_connections(text: str) -> list[HttpConnection]:

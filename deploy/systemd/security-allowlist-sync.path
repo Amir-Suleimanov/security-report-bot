@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch security-report-bot scan allowlist file
+
+[Path]
+PathModified=/etc/security-report-bot/scan-whitelist.txt
+Unit=security-allowlist-sync.service
+
+[Install]
+WantedBy=multi-user.target

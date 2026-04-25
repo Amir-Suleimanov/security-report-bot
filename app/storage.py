@@ -60,27 +60,31 @@ class Storage:
             last_sent_at=datetime.fromisoformat(row[3]).replace(tzinfo=UTC) if row[3] else None,
         )
 
-    def set_interval(self, chat_id: int, interval_sec: int) -> None:
+    def set_interval(self, chat_id: int, interval_sec: int, reset_from: datetime) -> None:
+        reset_at = reset_from.astimezone(UTC).replace(tzinfo=None).isoformat(sep=" ")
         with sqlite3.connect(self.path) as conn:
             conn.execute(
                 """
                 INSERT INTO subscriptions (chat_id, enabled, interval_sec, last_sent_at)
-                VALUES (?, 1, ?, NULL)
-                ON CONFLICT(chat_id) DO UPDATE SET enabled = 1, interval_sec = excluded.interval_sec
+                VALUES (?, 1, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    enabled = 1,
+                    interval_sec = excluded.interval_sec,
+                    last_sent_at = excluded.last_sent_at
                 """,
-                (chat_id, interval_sec),
+                (chat_id, interval_sec, reset_at),
             )
             conn.commit()
 
-    def disable(self, chat_id: int) -> None:
+    def disable(self, chat_id: int, default_interval_sec: int) -> None:
         with sqlite3.connect(self.path) as conn:
             conn.execute(
                 """
                 INSERT INTO subscriptions (chat_id, enabled, interval_sec, last_sent_at)
-                VALUES (?, 0, 10800, NULL)
+                VALUES (?, 0, ?, NULL)
                 ON CONFLICT(chat_id) DO UPDATE SET enabled = 0
                 """,
-                (chat_id,),
+                (chat_id, default_interval_sec),
             )
             conn.commit()
 

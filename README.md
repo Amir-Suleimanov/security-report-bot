@@ -7,6 +7,7 @@
 Проект рассчитан на установку на сам целевой сервер. Он:
 - отправляет security-отчёт по команде и по расписанию
 - показывает текущие баны, новые баны за день, suspicious IP и HTTPS-подключения
+- считает новые баны по реальным ban events из `fail2ban.sqlite3`
 - отправляет nightly digest в `23:50 UTC` со списком новых IP за день и путями, по которым они ходили
 - поддерживает allowlist IP, которые не должны повторно баниться, но должны оставаться под наблюдением
 - поддерживает отдельный persistent denylist для вручную подтверждённых вредоносных IP
@@ -31,6 +32,8 @@
 - `app/reporting.py` — генерация security-отчётов
 - `app/storage.py` — SQLite state для интервала отчётов
 - `app/daily_digest.py` — nightly digest “новые баны за день”
+- `app/allowlist_sync.py` — синхронизация scanner allowlist в `fail2ban ignoreip`
+- `app/fail2ban_db.py` — чтение ban events из `fail2ban.sqlite3`
 - `app/config.py` — загрузка env
 - `requirements.txt` — Python-зависимости проекта
 - `deploy/` — готовые шаблоны для другого сервера
@@ -97,15 +100,17 @@ pip install -r requirements.txt
 Файлы, которые нужно создать или скопировать до запуска:
 - `/etc/default/security-report-bot`
 - `/etc/security-report-bot/scan-whitelist.txt`
+- `/etc/security-report-bot/fail2ban-ignore-base.txt`
 - `/etc/security-report-bot/manual-denylist.txt`
 - `/etc/fail2ban/filter.d/nginx-vulnscan.conf`
 - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
 - `/etc/fail2ban/jail.d/nginx-botsearch.local`
-- `/etc/fail2ban/jail.d/nginx-allowlist.local`
 - `/etc/fail2ban/jail.d/sshd.local`
 - `/etc/systemd/system/security-report-bot.service`
 - `/etc/systemd/system/security-daily-ban-digest.service`
 - `/etc/systemd/system/security-daily-ban-digest.timer`
+- `/etc/systemd/system/security-allowlist-sync.service`
+- `/etc/systemd/system/security-allowlist-sync.path`
 - `/etc/systemd/system/security-manual-denylist-sync.service`
 - `/etc/systemd/system/security-manual-denylist-sync.path`
 
@@ -139,11 +144,13 @@ pip install -r requirements.txt
 - `DEFAULT_REPORT_INTERVAL_SEC`
 - `SCHEDULER_POLL_INTERVAL_SEC`
 - `STATE_DB_PATH`
+- `FAIL2BAN_DB_PATH`
 - `REPORT_TITLE`
 - `MONITORED_SERVICE_NAME`
 - `MONITORED_SERVICE_LABEL`
 - `ALLOWLIST_PATH`
 - `MANUAL_DENYLIST_PATH`
+- `FAIL2BAN_IGNORE_BASE_PATH`
 
 ## Установка на новый сервер
 
@@ -200,7 +207,6 @@ sudo systemctl reload nginx
 - [deploy/fail2ban/filter.d/nginx-vulnscan.conf](deploy/fail2ban/filter.d/nginx-vulnscan.conf)
 - [deploy/fail2ban/jail.d/nginx-vulnscan.local](deploy/fail2ban/jail.d/nginx-vulnscan.local)
 - [deploy/fail2ban/jail.d/nginx-botsearch.local](deploy/fail2ban/jail.d/nginx-botsearch.local)
-- [deploy/fail2ban/jail.d/nginx-allowlist.local.example](deploy/fail2ban/jail.d/nginx-allowlist.local.example)
 - [deploy/fail2ban/jail.d/sshd.local](deploy/fail2ban/jail.d/sshd.local)
 
 в соответствующие каталоги на сервере:
@@ -217,16 +223,21 @@ sudo systemctl reload nginx
 по шаблону:
 - [deploy/server/scan-whitelist.txt](deploy/server/scan-whitelist.txt)
 
+И создайте отдельный файл для инфраструктурных IP, которые `fail2ban` не должен трогать:
+- `/etc/security-report-bot/fail2ban-ignore-base.txt`
+
+по шаблону:
+- [deploy/server/fail2ban-ignore-base.txt](deploy/server/fail2ban-ignore-base.txt)
+
 Если нужен persistent denylist для вручную подтверждённых вредоносных IP, создайте:
 - `/etc/security-report-bot/manual-denylist.txt`
 
 по шаблону:
 - [deploy/server/manual-denylist.txt](deploy/server/manual-denylist.txt)
 
-Для `nginx-allowlist.local`:
-- создайте файл на основе `deploy/fail2ban/jail.d/nginx-allowlist.local.example`
-- внесите туда только те IP или подсети, которые вы сознательно хотите исключить из банов
-- не оставляйте в шаблоне чужие IP
+`/etc/fail2ban/jail.d/nginx-allowlist.local` больше не редактируется вручную:
+- он генерируется из `scan-whitelist.txt` и `fail2ban-ignore-base.txt`
+- это убирает дрейф между ботом и `fail2ban`
 
 После этого:
 
@@ -269,7 +280,25 @@ sudo systemctl start security-manual-denylist-sync.service
 sudo systemctl status security-manual-denylist-sync.path
 ```
 
-### 7. Включить nightly digest
+### 7. Включить sync для allowlist
+
+Скопируйте:
+- [deploy/systemd/security-allowlist-sync.service](deploy/systemd/security-allowlist-sync.service)
+- [deploy/systemd/security-allowlist-sync.path](deploy/systemd/security-allowlist-sync.path)
+
+в:
+- `/etc/systemd/system/`
+
+Затем:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now security-allowlist-sync.path
+sudo systemctl start security-allowlist-sync.service
+sudo systemctl status security-allowlist-sync.path
+```
+
+### 8. Включить nightly digest
 
 Скопируйте:
 - [deploy/systemd/security-daily-ban-digest.service](deploy/systemd/security-daily-ban-digest.service)
@@ -303,8 +332,9 @@ Allowlist нужен для IP, которые:
 
 Текущая схема:
 - список хранится в `/etc/security-report-bot/scan-whitelist.txt`
+- инфраструктурные исключения хранятся отдельно в `/etc/security-report-bot/fail2ban-ignore-base.txt`
 - поддерживаются и отдельные IP, и CIDR-сети
-- `fail2ban` получает эти IP через `ignoreip`
+- `fail2ban` получает эти IP через автогенерацию `nginx-allowlist.local`
 - бот продолжает показывать такие адреса как `в белом списке`
 - в шаблоне уже есть полный Cloudflare CIDR-набор, чтобы edge IP не банились по умолчанию
 
@@ -346,6 +376,7 @@ docker run --rm --env-file .env security-report-bot
 
 ```bash
 sudo systemctl status security-report-bot.service
+sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
 sudo fail2ban-client status nginx-vulnscan
@@ -370,15 +401,16 @@ sudo tail -n 50 /var/log/nginx/access.log
 7. Настроить real IP для reverse proxy, если сайт стоит за CDN или балансировщиком.
 8. Положить fail2ban filter и jail-файлы в `/etc/fail2ban/...`.
 9. Создать `/etc/security-report-bot/scan-whitelist.txt`.
-10. Создать `/etc/security-report-bot/manual-denylist.txt`.
-11. Создать `/etc/fail2ban/jail.d/nginx-allowlist.local` из example-шаблона, если нужен allowlist.
+10. Создать `/etc/security-report-bot/fail2ban-ignore-base.txt`.
+11. Создать `/etc/security-report-bot/manual-denylist.txt`.
 12. Перезапустить `fail2ban` и проверить, что jail `nginx-vulnscan` появился.
-13. Положить `systemd` unit-файлы бота, nightly digest и denylist sync.
+13. Положить `systemd` unit-файлы бота, nightly digest, allowlist sync и denylist sync.
 14. Выполнить `systemctl daemon-reload`.
 15. Включить и запустить `security-report-bot.service`.
-16. Включить `security-manual-denylist-sync.path` и один раз запустить `security-manual-denylist-sync.service`.
-17. Включить и запустить `security-daily-ban-digest.timer`.
-18. Проверить, что бот отвечает на `/report`, а timer запланирован на `23:50 UTC`.
+16. Включить `security-allowlist-sync.path` и один раз запустить `security-allowlist-sync.service`.
+17. Включить `security-manual-denylist-sync.path` и один раз запустить `security-manual-denylist-sync.service`.
+18. Включить и запустить `security-daily-ban-digest.timer`.
+19. Проверить, что бот отвечает на `/report`, а timer запланирован на `23:50 UTC`.
 
 ## Что адаптировать под другой сайт
 

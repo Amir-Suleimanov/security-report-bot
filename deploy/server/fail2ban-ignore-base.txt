@@ -1,0 +1,3 @@
+# Infra IPs or networks that fail2ban must never ban.
+# Keep scanner allowlist entries in scan-whitelist.txt instead.
+

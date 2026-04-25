@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
+from aiogram.enums import ChatType, ParseMode
 from aiogram.filters.callback_data import CallbackData
 from aiogram.filters import Command
 from aiogram.types import (
@@ -130,7 +130,12 @@ class SecurityBotApp:
 
 def is_allowed(message: Message, settings: Settings) -> bool:
     user = message.from_user
-    return user is not None and user.id in settings.allowed_chat_ids
+    return (
+        user is not None
+        and message.chat.type == ChatType.PRIVATE
+        and message.chat.id == user.id
+        and message.chat.id in settings.allowed_chat_ids
+    )
 
 
 @router.message(Command("start"))
@@ -190,10 +195,10 @@ async def cmd_interval(message: Message, settings: Settings, storage: Storage, r
         await message.answer(str(exc))
         return
     if interval is None:
-        storage.disable(message.chat.id)
+        storage.disable(message.chat.id, settings.default_interval_sec)
         await message.answer("Периодические отчёты выключены.")
         return
-    storage.set_interval(message.chat.id, interval)
+    storage.set_interval(message.chat.id, interval, datetime.now(UTC))
     await message.answer(f"Интервал обновлён: {reporter.format_interval(interval)}")
 
 
@@ -201,7 +206,7 @@ async def cmd_interval(message: Message, settings: Settings, storage: Storage, r
 async def cmd_off(message: Message, settings: Settings, storage: Storage) -> None:
     if not is_allowed(message, settings):
         return
-    storage.disable(message.chat.id)
+    storage.disable(message.chat.id, settings.default_interval_sec)
     await message.answer("Периодические отчёты выключены.")
 
 
@@ -218,7 +223,12 @@ async def on_report_action(
         await callback.answer()
         return
     user = callback.from_user
-    if user is None or user.id not in settings.allowed_chat_ids:
+    if (
+        user is None
+        or message.chat.type != ChatType.PRIVATE
+        or message.chat.id != user.id
+        or message.chat.id not in settings.allowed_chat_ids
+    ):
         await callback.answer()
         return
 

@@ -69,6 +69,8 @@ sudo editor /etc/default/security-report-bot
 - `MONITORED_SERVICE_LABEL`
 - `ALLOWLIST_PATH`
 - `MANUAL_DENYLIST_PATH`
+- `FAIL2BAN_DB_PATH`
+- `FAIL2BAN_IGNORE_BASE_PATH`
 - `STATE_DB_PATH`
 
 ## 6. Настроить real IP для reverse proxy
@@ -103,16 +105,17 @@ sudo cp deploy/fail2ban/jail.d/sshd.local /etc/fail2ban/jail.d/sshd.local
 Если нужен allowlist:
 
 ```bash
-sudo cp deploy/fail2ban/jail.d/nginx-allowlist.local.example /etc/fail2ban/jail.d/nginx-allowlist.local
 sudo cp deploy/server/scan-whitelist.txt /etc/security-report-bot/scan-whitelist.txt
-sudo editor /etc/fail2ban/jail.d/nginx-allowlist.local
+sudo cp deploy/server/fail2ban-ignore-base.txt /etc/security-report-bot/fail2ban-ignore-base.txt
 sudo editor /etc/security-report-bot/scan-whitelist.txt
+sudo editor /etc/security-report-bot/fail2ban-ignore-base.txt
 ```
 
 Если allowlist не нужен:
 
 ```bash
 sudo touch /etc/security-report-bot/scan-whitelist.txt
+sudo touch /etc/security-report-bot/fail2ban-ignore-base.txt
 ```
 
 Если нужен persistent denylist для вручную подтверждённых вредоносных IP:
@@ -129,11 +132,13 @@ sudo touch /etc/security-report-bot/manual-denylist.txt
 ```
 
 Шаблоны уже включают Cloudflare CIDR по умолчанию:
-- `nginx-allowlist.local.example` для `fail2ban ignoreip`
 - `scan-whitelist.txt` для Telegram-бота
 - `manual-denylist.txt` для постоянных ручных блокировок в `ufw`
 
 Бот понимает не только отдельные IP, но и CIDR-сети.
+`fail2ban` ignoreip теперь синхронизируется автоматически из:
+- `scan-whitelist.txt`
+- `fail2ban-ignore-base.txt`
 
 Перезапустить `fail2ban`:
 
@@ -148,6 +153,8 @@ sudo fail2ban-client status nginx-vulnscan
 sudo cp deploy/systemd/security-report-bot.service /etc/systemd/system/security-report-bot.service
 sudo cp deploy/systemd/security-daily-ban-digest.service /etc/systemd/system/security-daily-ban-digest.service
 sudo cp deploy/systemd/security-daily-ban-digest.timer /etc/systemd/system/security-daily-ban-digest.timer
+sudo cp deploy/systemd/security-allowlist-sync.service /etc/systemd/system/security-allowlist-sync.service
+sudo cp deploy/systemd/security-allowlist-sync.path /etc/systemd/system/security-allowlist-sync.path
 sudo cp deploy/systemd/security-manual-denylist-sync.service /etc/systemd/system/security-manual-denylist-sync.service
 sudo cp deploy/systemd/security-manual-denylist-sync.path /etc/systemd/system/security-manual-denylist-sync.path
 sudo systemctl daemon-reload
@@ -160,7 +167,15 @@ sudo systemctl enable --now security-report-bot.service
 sudo systemctl status security-report-bot.service
 ```
 
-## 10. Включить sync для persistent denylist
+## 10. Включить sync для allowlist
+
+```bash
+sudo systemctl enable --now security-allowlist-sync.path
+sudo systemctl start security-allowlist-sync.service
+sudo systemctl status security-allowlist-sync.path
+```
+
+## 11. Включить sync для persistent denylist
 
 ```bash
 sudo systemctl enable --now security-manual-denylist-sync.path
@@ -168,7 +183,7 @@ sudo systemctl start security-manual-denylist-sync.service
 sudo systemctl status security-manual-denylist-sync.path
 ```
 
-## 11. Включить nightly digest
+## 12. Включить nightly digest
 
 ```bash
 sudo systemctl enable --now security-daily-ban-digest.timer
@@ -177,7 +192,7 @@ sudo systemctl status security-daily-ban-digest.timer
 
 Digest отправляется в `23:50 UTC`.
 
-## 12. Что проверить после запуска
+## 13. Что проверить после запуска
 
 Проверить сервисы:
 
@@ -185,6 +200,7 @@ Digest отправляется в `23:50 UTC`.
 sudo systemctl status nginx
 sudo systemctl status fail2ban
 sudo systemctl status security-report-bot.service
+sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
 ```
@@ -203,11 +219,11 @@ sudo tail -n 50 /var/log/nginx/access.log
 - inline-кнопки
 - отсутствие ответа для неразрешённых пользователей
 
-## 13. Что агент не должен забыть
+## 14. Что агент не должен забыть
 
 - Бот должен читать `/var/log/nginx/access.log` и при необходимости `access.log.*`
 - Путь из `STATE_DB_PATH` должен быть доступен на запись
-- Не оставляйте в `nginx-allowlist.local` и `scan-whitelist.txt` чужие IP из другого сервера
+- Не смешивайте scanner allowlist и инфраструктурные исключения: первое храните в `scan-whitelist.txt`, второе в `fail2ban-ignore-base.txt`
 - Не складывайте автоматические `fail2ban`-срабатывания в `manual-denylist.txt` без ручной проверки
 - Не коммитьте реальный `.env`
 - Не используйте Docker как основной способ продакшен-развёртывания, если нужен доступ к host logs и `fail2ban-client`

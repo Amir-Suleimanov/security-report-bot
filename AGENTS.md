@@ -33,6 +33,7 @@
 - Создать файлы:
   - `/etc/default/security-report-bot`
   - `/etc/security-report-bot/scan-whitelist.txt`
+  - `/etc/security-report-bot/fail2ban-ignore-base.txt`
   - `/etc/security-report-bot/manual-denylist.txt`
   - `/etc/fail2ban/filter.d/nginx-vulnscan.conf`
   - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
@@ -41,9 +42,10 @@
   - `/etc/systemd/system/security-report-bot.service`
   - `/etc/systemd/system/security-daily-ban-digest.service`
   - `/etc/systemd/system/security-daily-ban-digest.timer`
+  - `/etc/systemd/system/security-allowlist-sync.service`
+  - `/etc/systemd/system/security-allowlist-sync.path`
   - `/etc/systemd/system/security-manual-denylist-sync.service`
   - `/etc/systemd/system/security-manual-denylist-sync.path`
-- Создать `/etc/fail2ban/jail.d/nginx-allowlist.local` только если нужен allowlist.
 - Не запускать бот до тех пор, пока не заполнены `TELEGRAM_BOT_TOKEN` и `ALLOWED_CHAT_IDS`.
 
 ## Runtime assumptions
@@ -57,6 +59,6 @@
 ## Files operators edit most often
 - `.env`
 - `deploy/server/scan-whitelist.txt`
+- `deploy/server/fail2ban-ignore-base.txt`
 - `deploy/server/manual-denylist.txt`
-- `deploy/fail2ban/jail.d/nginx-allowlist.local.example`
 - `deploy/fail2ban/filter.d/nginx-vulnscan.conf`

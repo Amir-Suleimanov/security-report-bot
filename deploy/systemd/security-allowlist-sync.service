@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync security-report-bot allowlist to fail2ban ignoreip
+After=network-online.target fail2ban.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/security-report-bot
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/default/security-report-bot
+ExecStart=/opt/security-report-bot/.venv/bin/python -m app.allowlist_sync sync
