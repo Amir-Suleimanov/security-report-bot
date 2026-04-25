@@ -72,6 +72,7 @@ class ReportSnapshot:
 class Allowlist:
     exact_ips: set[str]
     networks: list[ipaddress._BaseNetwork]
+    entries: list[str]
 
 
 class Reporter:
@@ -92,19 +93,23 @@ class Reporter:
         access_log = await self._run("cat /var/log/nginx/access.log")
         active_http = await self._run("ss -Htn '( sport = :80 or sport = :443 )'")
 
-        banned_ips = self._extract_ban_list(nginx_vulnscan)
+        fail2ban_banned_ips = self._extract_ban_list(nginx_vulnscan)
         allowlist = self._load_allowlist(self.settings.allowlist_path)
+        manual_denylist = self._load_allowlist(self.settings.manual_denylist_path)
+        blocked_entries = sorted(set(fail2ban_banned_ips) | set(manual_denylist.entries))
         suspicious = self._summarize_suspicious_requests(
             access_log,
             now=now,
             window_sec=window_sec,
-            banned_ips=set(banned_ips),
+            banned_ips=set(fail2ban_banned_ips),
             allowlist=allowlist,
+            manual_denylist=manual_denylist,
         )
         banned_today = self._summarize_banned_today(
             access_log,
-            banned_ips=set(banned_ips),
+            banned_ips=set(fail2ban_banned_ips),
             allowlist=allowlist,
+            manual_denylist=manual_denylist,
             today=now.date(),
         )
         connections = self._parse_connections(active_http)
@@ -116,7 +121,7 @@ class Reporter:
             nginx_state=nginx_state.strip() or "unknown",
             fail2ban_state=fail2ban_state.strip() or "unknown",
             monitored_service_state=monitored_service_state.strip() or "unknown",
-            banned_ips=banned_ips,
+            banned_ips=blocked_entries,
             banned_today=banned_today,
             suspicious=suspicious,
             connections=connections,
@@ -151,9 +156,12 @@ class Reporter:
 
     def format_banned_ips(self, snapshot: ReportSnapshot) -> str:
         if not snapshot.banned_ips:
-            return "<b>IP в бане</b>\nСейчас пусто."
+            return "<b>Блокировки</b>\nСейчас пусто."
         body = "\n".join(snapshot.banned_ips)
-        return f"<b>IP в бане сейчас: {len(snapshot.banned_ips)}</b>\n<blockquote expandable><code>{escape(body)}</code></blockquote>"
+        return (
+            f"<b>Блокировки сейчас: {len(snapshot.banned_ips)}</b>\n"
+            f"<blockquote expandable><code>{escape(body)}</code></blockquote>"
+        )
 
     def format_suspicious_ips(self, snapshot: ReportSnapshot) -> str:
         if not snapshot.suspicious:
@@ -200,6 +208,7 @@ class Reporter:
         window_sec: int,
         banned_ips: set[str],
         allowlist: Allowlist,
+        manual_denylist: Allowlist,
     ) -> list[SuspiciousRequest]:
         threshold = now - timedelta(seconds=window_sec)
         items: dict[tuple[str, str, str], SuspiciousRequest] = {}
@@ -232,7 +241,7 @@ class Reporter:
                     path=path,
                     count=1,
                     last_seen=ts,
-                    banned=ip in banned_ips,
+                    banned=ip in banned_ips or self._is_allowlisted(ip, manual_denylist),
                     whitelisted=self._is_allowlisted(ip, allowlist),
                     user_agent=user_agent,
                 )
@@ -241,7 +250,7 @@ class Reporter:
             item.count += 1
             if ts > item.last_seen:
                 item.last_seen = ts
-            item.banned = item.banned or ip in banned_ips
+            item.banned = item.banned or ip in banned_ips or self._is_allowlisted(ip, manual_denylist)
             item.whitelisted = item.whitelisted or self._is_allowlisted(ip, allowlist)
             if not item.user_agent and user_agent:
                 item.user_agent = user_agent
@@ -269,21 +278,25 @@ class Reporter:
     @staticmethod
     def _load_allowlist(path) -> Allowlist:
         if not path.exists():
-            return Allowlist(exact_ips=set(), networks=[])
+            return Allowlist(exact_ips=set(), networks=[], entries=[])
         exact_ips: set[str] = set()
         networks: list[ipaddress._BaseNetwork] = []
+        entries: list[str] = []
         for raw_line in path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#"):
                 continue
             if "/" in line:
                 try:
-                    networks.append(ipaddress.ip_network(line, strict=False))
+                    network = ipaddress.ip_network(line, strict=False)
+                    networks.append(network)
+                    entries.append(str(network))
                     continue
                 except ValueError:
                     pass
             exact_ips.add(line)
-        return Allowlist(exact_ips=exact_ips, networks=networks)
+            entries.append(line)
+        return Allowlist(exact_ips=exact_ips, networks=networks, entries=entries)
 
     @staticmethod
     def _is_allowlisted(ip: str, allowlist: Allowlist) -> bool:
@@ -308,6 +321,7 @@ class Reporter:
         access_log: str,
         banned_ips: set[str],
         allowlist: Allowlist,
+        manual_denylist: Allowlist,
         today: object,
     ) -> list[str]:
         first_seen: dict[str, datetime] = {}
@@ -316,7 +330,7 @@ class Reporter:
             if match is None:
                 continue
             ip = match.group("ip")
-            if ip not in banned_ips or self._is_allowlisted(ip, allowlist):
+            if (ip not in banned_ips and not self._is_allowlisted(ip, manual_denylist)) or self._is_allowlisted(ip, allowlist):
                 continue
             user_agent = match.group("ua")
             if _TRUSTED_UA_RE.search(user_agent):

@@ -11,7 +11,14 @@ from pathlib import Path
 from aiogram import Bot
 
 from app.config import Settings
-from app.reporting import _LOG_RE, _SCANNER_UA_RE, _SUSPICIOUS_PATH_RE, _SUSPICIOUS_QUERY_RE, _TRUSTED_UA_RE
+from app.reporting import (
+    _LOG_RE,
+    _SCANNER_UA_RE,
+    _SUSPICIOUS_PATH_RE,
+    _SUSPICIOUS_QUERY_RE,
+    _TRUSTED_UA_RE,
+    Reporter,
+)
 
 
 def run(command: str) -> str:
@@ -111,7 +118,9 @@ async def main() -> None:
     settings = Settings.load()
     now = datetime.now(UTC)
     report_day = (now - timedelta(days=1)).date() if now.hour < 2 else now.date()
-    banned_ips = set(parse_banned_ips())
+    reporter = Reporter(settings)
+    manual_denylist = reporter._load_allowlist(settings.manual_denylist_path)
+    banned_ips = set(parse_banned_ips()) | set(manual_denylist.entries)
     _, message = build_daily_digest(report_day, banned_ips)
     await send_summary(settings, message)
 

@@ -1,0 +1,3 @@
+# Manually confirmed malicious IPs or CIDR ranges.
+# This file is intentionally separate from automatic fail2ban bans.
+# Keep it empty until you explicitly decide an IP should stay blocked persistently.

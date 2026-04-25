@@ -16,6 +16,7 @@ class Settings:
     monitored_service_name: str
     monitored_service_label: str
     allowlist_path: Path
+    manual_denylist_path: Path
 
     @classmethod
     def load(cls) -> "Settings":
@@ -32,6 +33,9 @@ class Settings:
         monitored_service_name = os.environ.get("MONITORED_SERVICE_NAME", "").strip()
         monitored_service_label = os.environ.get("MONITORED_SERVICE_LABEL", "").strip() or monitored_service_name
         allowlist_path = Path(os.environ.get("ALLOWLIST_PATH", "/etc/security-report-bot/scan-whitelist.txt"))
+        manual_denylist_path = Path(
+            os.environ.get("MANUAL_DENYLIST_PATH", "/etc/security-report-bot/manual-denylist.txt")
+        )
         return cls(
             bot_token=bot_token,
             allowed_chat_ids=allowed_chat_ids,
@@ -42,4 +46,5 @@ class Settings:
             monitored_service_name=monitored_service_name,
             monitored_service_label=monitored_service_label,
             allowlist_path=allowlist_path,
+            manual_denylist_path=manual_denylist_path,
         )

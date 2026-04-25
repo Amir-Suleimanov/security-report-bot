@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch Security Manual Denylist file
+
+[Path]
+PathModified=/etc/security-report-bot/manual-denylist.txt
+Unit=security-manual-denylist-sync.service
+
+[Install]
+WantedBy=multi-user.target

@@ -68,6 +68,7 @@ sudo editor /etc/default/security-report-bot
 - `MONITORED_SERVICE_NAME`
 - `MONITORED_SERVICE_LABEL`
 - `ALLOWLIST_PATH`
+- `MANUAL_DENYLIST_PATH`
 - `STATE_DB_PATH`
 
 ## 6. Настроить real IP для reverse proxy
@@ -114,9 +115,23 @@ sudo editor /etc/security-report-bot/scan-whitelist.txt
 sudo touch /etc/security-report-bot/scan-whitelist.txt
 ```
 
+Если нужен persistent denylist для вручную подтверждённых вредоносных IP:
+
+```bash
+sudo cp deploy/server/manual-denylist.txt /etc/security-report-bot/manual-denylist.txt
+sudo editor /etc/security-report-bot/manual-denylist.txt
+```
+
+Если пока не нужен:
+
+```bash
+sudo touch /etc/security-report-bot/manual-denylist.txt
+```
+
 Шаблоны уже включают Cloudflare CIDR по умолчанию:
 - `nginx-allowlist.local.example` для `fail2ban ignoreip`
 - `scan-whitelist.txt` для Telegram-бота
+- `manual-denylist.txt` для постоянных ручных блокировок в `ufw`
 
 Бот понимает не только отдельные IP, но и CIDR-сети.
 
@@ -133,6 +148,8 @@ sudo fail2ban-client status nginx-vulnscan
 sudo cp deploy/systemd/security-report-bot.service /etc/systemd/system/security-report-bot.service
 sudo cp deploy/systemd/security-daily-ban-digest.service /etc/systemd/system/security-daily-ban-digest.service
 sudo cp deploy/systemd/security-daily-ban-digest.timer /etc/systemd/system/security-daily-ban-digest.timer
+sudo cp deploy/systemd/security-manual-denylist-sync.service /etc/systemd/system/security-manual-denylist-sync.service
+sudo cp deploy/systemd/security-manual-denylist-sync.path /etc/systemd/system/security-manual-denylist-sync.path
 sudo systemctl daemon-reload
 ```
 
@@ -143,7 +160,15 @@ sudo systemctl enable --now security-report-bot.service
 sudo systemctl status security-report-bot.service
 ```
 
-## 10. Включить nightly digest
+## 10. Включить sync для persistent denylist
+
+```bash
+sudo systemctl enable --now security-manual-denylist-sync.path
+sudo systemctl start security-manual-denylist-sync.service
+sudo systemctl status security-manual-denylist-sync.path
+```
+
+## 11. Включить nightly digest
 
 ```bash
 sudo systemctl enable --now security-daily-ban-digest.timer
@@ -152,7 +177,7 @@ sudo systemctl status security-daily-ban-digest.timer
 
 Digest отправляется в `23:50 UTC`.
 
-## 11. Что проверить после запуска
+## 12. Что проверить после запуска
 
 Проверить сервисы:
 
@@ -160,6 +185,7 @@ Digest отправляется в `23:50 UTC`.
 sudo systemctl status nginx
 sudo systemctl status fail2ban
 sudo systemctl status security-report-bot.service
+sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
 ```
 
@@ -167,6 +193,7 @@ sudo systemctl status security-daily-ban-digest.timer
 
 ```bash
 sudo fail2ban-client status nginx-vulnscan
+sudo /opt/security-report-bot/.venv/bin/python -m app.manual_denylist status
 sudo tail -n 50 /var/log/nginx/access.log
 ```
 
@@ -176,10 +203,11 @@ sudo tail -n 50 /var/log/nginx/access.log
 - inline-кнопки
 - отсутствие ответа для неразрешённых пользователей
 
-## 12. Что агент не должен забыть
+## 13. Что агент не должен забыть
 
 - Бот должен читать `/var/log/nginx/access.log` и при необходимости `access.log.*`
 - Путь из `STATE_DB_PATH` должен быть доступен на запись
 - Не оставляйте в `nginx-allowlist.local` и `scan-whitelist.txt` чужие IP из другого сервера
+- Не складывайте автоматические `fail2ban`-срабатывания в `manual-denylist.txt` без ручной проверки
 - Не коммитьте реальный `.env`
 - Не используйте Docker как основной способ продакшен-развёртывания, если нужен доступ к host logs и `fail2ban-client`

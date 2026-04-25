@@ -10,6 +10,7 @@
 - Для “точно такого же” поведения на другом сервере предпочитать host deployment через `systemd`, а не Docker-only режим.
 - Все авторазбаны отключены. Nightly job только отправляет digest.
 - IP из allowlist не должны баниться повторно, но их suspicious requests должны быть видны в отчётах.
+- Вручную подтверждённые вредоносные IP должны идти в отдельный persistent denylist, а не смешиваться с обычными временными банами `fail2ban`.
 
 ## Deploy order
 1. Скопировать репозиторий на новый сервер.
@@ -32,6 +33,7 @@
 - Создать файлы:
   - `/etc/default/security-report-bot`
   - `/etc/security-report-bot/scan-whitelist.txt`
+  - `/etc/security-report-bot/manual-denylist.txt`
   - `/etc/fail2ban/filter.d/nginx-vulnscan.conf`
   - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
   - `/etc/fail2ban/jail.d/nginx-botsearch.local`
@@ -39,6 +41,8 @@
   - `/etc/systemd/system/security-report-bot.service`
   - `/etc/systemd/system/security-daily-ban-digest.service`
   - `/etc/systemd/system/security-daily-ban-digest.timer`
+  - `/etc/systemd/system/security-manual-denylist-sync.service`
+  - `/etc/systemd/system/security-manual-denylist-sync.path`
 - Создать `/etc/fail2ban/jail.d/nginx-allowlist.local` только если нужен allowlist.
 - Не запускать бот до тех пор, пока не заполнены `TELEGRAM_BOT_TOKEN` и `ALLOWED_CHAT_IDS`.
 
@@ -53,5 +57,6 @@
 ## Files operators edit most often
 - `.env`
 - `deploy/server/scan-whitelist.txt`
+- `deploy/server/manual-denylist.txt`
 - `deploy/fail2ban/jail.d/nginx-allowlist.local.example`
 - `deploy/fail2ban/filter.d/nginx-vulnscan.conf`
