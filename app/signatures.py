@@ -34,7 +34,7 @@ def render_fail2ban_filter() -> str:
     return f"""[Definition]
 
 # Generated from app/signatures.py. Keep the report logic and fail2ban filter in sync.
-failregex = ^<HOST> .* "(?:GET|POST|HEAD|OPTIONS|PROPFIND|PUT) /{SUSPICIOUS_PATH_FRAGMENT}[^\\"]*"
+failregex = ^<HOST> .* "(?:GET|POST|HEAD|OPTIONS|PROPFIND|PUT) /.*{SUSPICIOUS_PATH_FRAGMENT}[^\\"]*"
             ^<HOST> .* "PROPFIND /[^\\"]*"
             ^<HOST> .* "(?:GET|POST|HEAD|OPTIONS) /{BACKUP_LEAK_FRAGMENT}[^\\"]*"
             ^<HOST> .* "(?:GET|POST|HEAD) /\\?XDEBUG_SESSION_START=[^\\"]*"

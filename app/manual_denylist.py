@@ -65,9 +65,9 @@ def sync_ufw(entries: list[str]) -> tuple[list[str], list[str]]:
     added = sorted(desired - existing)
 
     for entry in removed:
-        run(["ufw", "--force", "delete", "reject", "from", entry, "comment", COMMENT])
+        run(["ufw", "--force", "delete", "reject", "from", entry, "to", "any", "comment", COMMENT])
     for entry in added:
-        run(["ufw", "--force", "reject", "from", entry, "comment", COMMENT])
+        run(["ufw", "reject", "from", entry, "to", "any", "comment", COMMENT])
     return added, removed
 
 
