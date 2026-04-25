@@ -155,7 +155,6 @@ async def cmd_report(message: Message, settings: Settings, storage: Storage, rep
     interval_sec = sub.interval_sec if sub else settings.default_interval_sec
     snapshot = await reporter.collect_snapshot(interval_sec)
     await message.answer(reporter.format_report(snapshot), reply_markup=build_report_keyboard(snapshot))
-    storage.touch_sent(message.chat.id, datetime.now(UTC))
 
 
 @router.message(Command("status"))

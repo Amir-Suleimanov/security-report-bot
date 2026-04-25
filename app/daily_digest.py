@@ -36,13 +36,14 @@ def parse_banned_ips() -> list[str]:
 
 def iter_log_lines() -> list[str]:
     lines: list[str] = []
-    for path in sorted(Path("/var/log/nginx").glob("access.log*")):
-        if path.suffix == ".gz":
-            with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
-                lines.extend(fh.readlines())
-        else:
-            with path.open("r", encoding="utf-8", errors="replace") as fh:
-                lines.extend(fh.readlines())
+    for pattern in ("access.log*", "scanner-drop.log*"):
+        for path in sorted(Path("/var/log/nginx").glob(pattern)):
+            if path.suffix == ".gz":
+                with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
+                    lines.extend(fh.readlines())
+            else:
+                with path.open("r", encoding="utf-8", errors="replace") as fh:
+                    lines.extend(fh.readlines())
     return lines
 
 

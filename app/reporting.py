@@ -90,7 +90,7 @@ class Reporter:
             else "disabled"
         )
         nginx_vulnscan = await self._run("fail2ban-client status nginx-vulnscan")
-        access_log = await self._run("cat /var/log/nginx/access.log")
+        access_log = await self._run("cat /var/log/nginx/access.log /var/log/nginx/scanner-drop.log 2>/dev/null")
         active_http = await self._run("ss -Htn '( sport = :80 or sport = :443 )'")
 
         fail2ban_banned_ips = self._extract_ban_list(nginx_vulnscan)
@@ -141,7 +141,7 @@ class Reporter:
             f"• Сейчас в бане: <b>{len(snapshot.banned_ips)}</b>",
             f"• Новых банов за сегодня: <b>{len(snapshot.banned_today)}</b>",
             f"• Подозрительных событий: <b>{len(snapshot.suspicious)}</b>",
-            f"• HTTPS-подключения: <b>{self._format_connections_brief(snapshot.connections)}</b>",
+            f"• HTTP(S)-подключения: <b>{self._format_connections_brief(snapshot.connections)}</b>",
         ]
         return "\n".join(lines)
 
@@ -179,14 +179,14 @@ class Reporter:
 
     def format_connections(self, snapshot: ReportSnapshot) -> str:
         if not snapshot.connections:
-            return "<b>HTTPS-подключения</b>\nСейчас активных TCP-подключений к 443 нет."
+            return "<b>HTTP(S)-подключения</b>\nСейчас активных TCP-подключений к 80/443 нет."
         rows = [
             f"{conn.state} | {conn.peer_ip}:{conn.peer_port} | {self._describe_connection(conn)}"
             for conn in snapshot.connections
         ]
         body = "\n".join(rows)
         return (
-            f"<b>HTTPS-подключения сейчас: {len(snapshot.connections)}</b>\n"
+            f"<b>HTTP(S)-подключения сейчас: {len(snapshot.connections)}</b>\n"
             f"<blockquote expandable><code>{escape(body)}</code></blockquote>"
         )
 
@@ -402,7 +402,7 @@ class Reporter:
 
     def _describe_connections_summary(self, connections: list[HttpConnection]) -> str:
         if not connections:
-            return "Сейчас активных TCP-подключений к 443 нет."
+            return "Сейчас активных TCP-подключений к 80/443 нет."
 
         estab = [item for item in connections if item.state == "ESTAB"]
         closing = [item for item in connections if item.state in _CLOSING_STATES]
