@@ -8,31 +8,19 @@ from datetime import UTC, datetime, timedelta
 from html import escape
 
 from app.config import Settings
+from app.nginx_logs import iter_log_lines
+from app.signatures import (
+    SCANNER_UA_RE as _SCANNER_UA_RE,
+    SUSPICIOUS_PATH_RE as _SUSPICIOUS_PATH_RE,
+    SUSPICIOUS_QUERY_RE as _SUSPICIOUS_QUERY_RE,
+    TRUSTED_UA_RE as _TRUSTED_UA_RE,
+)
 
 
 _LOG_RE = re.compile(
     r'^(?P<ip>\S+) - \S+ \[(?P<ts>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>\S+)[^"]*" (?P<status>\d{3}) '
     r'(?P<bytes>\S+) "(?P<referer>[^"]*)" "(?P<ua>[^"]*)"'
 )
-_SUSPICIOUS_PATH_RE = re.compile(
-    r"/(?:"
-    r"\.env(?:\..*)?|\.git(?:/.*)?|\.svn(?:/.*)?|\.hg(?:/.*)?|\.bzr(?:/.*)?|CVS(?:/.*)?|_darcs(?:/.*)?|"
-    r"\.DS_Store|\.idea(?:/.*)?|\.vscode(?:/.*)?|\.htaccess|\.htpasswd|\.bash_history|\.zsh_history|\.mysql_history|"
-    r"\.ssh(?:/.*)?|id_rsa|known_hosts|wp-admin/install\.php|wp-admin/setup-config\.php|"
-    r"wordpress/wp-admin/setup-config\.php|wp-config(?:\.php)?(?:[\.\-_~].*)?|wp-content/debug\.log|"
-    r"xmlrpc\.php|wp-login\.php|readme\.html|webstat/|druid/index\.html|manager/text(?:/list)?|actuator(?:/|$)|"
-    r"GponForm/diag_Form|cliente/login\.php|login\.cgi|(?:stfilein/)?operator/servetest|cgi-bin/|"
-    r"\+CSCOE\+/logon\.html|manage/account/login|admin/index\.html|backup(?:s)?(?:/.*)?|backup-db(?:/.*)?|"
-    r"composer\.json|composer\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml|"
-    r".*\.(?:sql|sqlite3?|db|bak|old|orig|save|swp|tmp|zip|tar|gz|tgz|7z|rar)"
-    r")"
-)
-_SUSPICIOUS_QUERY_RE = re.compile(r"\?XDEBUG_SESSION_START=", re.IGNORECASE)
-_SCANNER_UA_RE = re.compile(
-    r"(?:sqlmap|wpscan|feroxbuster|gobuster|ffuf|fuzz faster u fool|masscan|masscan-ng|l9explore|l9tcpid|nessus|acunetix)",
-    re.IGNORECASE,
-)
-_TRUSTED_UA_RE = re.compile(r"Google-Read-Aloud", re.IGNORECASE)
 _INTERVAL_RE = re.compile(r"^\s*(\d+)\s*([mhd])\s*$", re.IGNORECASE)
 _CLOSING_STATES = {"FIN-WAIT-1", "FIN-WAIT-2", "TIME-WAIT", "CLOSE-WAIT", "LAST-ACK", "CLOSING"}
 @dataclass(slots=True)
@@ -90,23 +78,15 @@ class Reporter:
             else "disabled"
         )
         nginx_vulnscan = await self._run("fail2ban-client status nginx-vulnscan")
-        access_log = await self._run("cat /var/log/nginx/access.log /var/log/nginx/scanner-drop.log 2>/dev/null")
         active_http = await self._run("ss -Htn '( sport = :80 or sport = :443 )'")
 
         fail2ban_banned_ips = self._extract_ban_list(nginx_vulnscan)
         allowlist = self._load_allowlist(self.settings.allowlist_path)
         manual_denylist = self._load_allowlist(self.settings.manual_denylist_path)
         blocked_entries = sorted(set(fail2ban_banned_ips) | set(manual_denylist.entries))
-        suspicious = self._summarize_suspicious_requests(
-            access_log,
+        suspicious, banned_today = self._analyze_logs(
             now=now,
             window_sec=window_sec,
-            banned_ips=set(fail2ban_banned_ips),
-            allowlist=allowlist,
-            manual_denylist=manual_denylist,
-        )
-        banned_today = self._summarize_banned_today(
-            access_log,
             banned_ips=set(fail2ban_banned_ips),
             allowlist=allowlist,
             manual_denylist=manual_denylist,
@@ -201,25 +181,24 @@ class Reporter:
         stdout, _ = await process.communicate()
         return stdout.decode("utf-8", errors="replace").strip()
 
-    def _summarize_suspicious_requests(
+    def _analyze_logs(
         self,
-        access_log: str,
         now: datetime,
         window_sec: int,
         banned_ips: set[str],
         allowlist: Allowlist,
         manual_denylist: Allowlist,
-    ) -> list[SuspiciousRequest]:
+        today: object,
+    ) -> tuple[list[SuspiciousRequest], list[str]]:
         threshold = now - timedelta(seconds=window_sec)
         items: dict[tuple[str, str, str], SuspiciousRequest] = {}
+        first_seen: dict[str, datetime] = {}
 
-        for line in access_log.splitlines():
+        for line in iter_log_lines():
             match = _LOG_RE.match(line)
             if match is None:
                 continue
             ts = datetime.strptime(match.group("ts"), "%d/%b/%Y:%H:%M:%S %z").astimezone(UTC)
-            if ts < threshold:
-                continue
             path = match.group("path")
             method = match.group("method")
             user_agent = match.group("ua")
@@ -233,6 +212,12 @@ class Reporter:
             ):
                 continue
             ip = match.group("ip")
+            is_manually_denied = self._is_allowlisted(ip, manual_denylist)
+            if (ip in banned_ips or is_manually_denied) and not self._is_allowlisted(ip, allowlist):
+                if ip not in first_seen or ts < first_seen[ip]:
+                    first_seen[ip] = ts
+            if ts < threshold:
+                continue
             key = (ip, method, path)
             if key not in items:
                 items[key] = SuspiciousRequest(
@@ -241,7 +226,7 @@ class Reporter:
                     path=path,
                     count=1,
                     last_seen=ts,
-                    banned=ip in banned_ips or self._is_allowlisted(ip, manual_denylist),
+                    banned=ip in banned_ips or is_manually_denied,
                     whitelisted=self._is_allowlisted(ip, allowlist),
                     user_agent=user_agent,
                 )
@@ -250,15 +235,17 @@ class Reporter:
             item.count += 1
             if ts > item.last_seen:
                 item.last_seen = ts
-            item.banned = item.banned or ip in banned_ips or self._is_allowlisted(ip, manual_denylist)
+            item.banned = item.banned or ip in banned_ips or is_manually_denied
             item.whitelisted = item.whitelisted or self._is_allowlisted(ip, allowlist)
             if not item.user_agent and user_agent:
                 item.user_agent = user_agent
 
-        return sorted(
+        suspicious = sorted(
             items.values(),
             key=lambda item: (-item.count, item.banned, item.last_seen, item.ip, item.path),
         )[:10]
+        banned_today = sorted(ip for ip, ts in first_seen.items() if ts.date() == today)
+        return suspicious, banned_today
 
     @staticmethod
     def _parse_connections(text: str) -> list[HttpConnection]:
@@ -315,39 +302,6 @@ class Reporter:
                 _, value = line.split(":", 1)
                 return [item for item in value.strip().split() if item]
         return []
-
-    def _summarize_banned_today(
-        self,
-        access_log: str,
-        banned_ips: set[str],
-        allowlist: Allowlist,
-        manual_denylist: Allowlist,
-        today: object,
-    ) -> list[str]:
-        first_seen: dict[str, datetime] = {}
-        for line in access_log.splitlines():
-            match = _LOG_RE.match(line)
-            if match is None:
-                continue
-            ip = match.group("ip")
-            if (ip not in banned_ips and not self._is_allowlisted(ip, manual_denylist)) or self._is_allowlisted(ip, allowlist):
-                continue
-            user_agent = match.group("ua")
-            if _TRUSTED_UA_RE.search(user_agent):
-                continue
-            path = match.group("path")
-            method = match.group("method")
-            if not (
-                _SUSPICIOUS_PATH_RE.search(path)
-                or _SUSPICIOUS_QUERY_RE.search(path)
-                or _SCANNER_UA_RE.search(user_agent)
-                or method == "PROPFIND"
-            ):
-                continue
-            ts = datetime.strptime(match.group("ts"), "%d/%b/%Y:%H:%M:%S %z").astimezone(UTC)
-            if ip not in first_seen or ts < first_seen[ip]:
-                first_seen[ip] = ts
-        return sorted(ip for ip, ts in first_seen.items() if ts.date() == today)
 
     def _build_details(self, snapshot: ReportSnapshot) -> str:
         lines: list[str] = []

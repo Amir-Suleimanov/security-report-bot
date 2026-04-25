@@ -1,23 +1,21 @@
 from __future__ import annotations
 
 import asyncio
-import gzip
 import html
 import subprocess
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from aiogram import Bot
 
 from app.config import Settings
-from app.reporting import (
-    _LOG_RE,
-    _SCANNER_UA_RE,
-    _SUSPICIOUS_PATH_RE,
-    _SUSPICIOUS_QUERY_RE,
-    _TRUSTED_UA_RE,
-    Reporter,
+from app.nginx_logs import iter_log_lines
+from app.reporting import _LOG_RE, Reporter
+from app.signatures import (
+    SCANNER_UA_RE as _SCANNER_UA_RE,
+    SUSPICIOUS_PATH_RE as _SUSPICIOUS_PATH_RE,
+    SUSPICIOUS_QUERY_RE as _SUSPICIOUS_QUERY_RE,
+    TRUSTED_UA_RE as _TRUSTED_UA_RE,
 )
 
 
@@ -32,21 +30,6 @@ def parse_banned_ips() -> list[str]:
         if "Banned IP list:" in line:
             return [item for item in line.split(":", 1)[1].strip().split() if item]
     return []
-
-
-def iter_log_lines() -> list[str]:
-    lines: list[str] = []
-    for pattern in ("access.log*", "scanner-drop.log*"):
-        for path in sorted(Path("/var/log/nginx").glob(pattern)):
-            if path.suffix == ".gz":
-                with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
-                    lines.extend(fh.readlines())
-            else:
-                with path.open("r", encoding="utf-8", errors="replace") as fh:
-                    lines.extend(fh.readlines())
-    return lines
-
-
 def build_daily_digest(report_day: datetime.date, banned_ips: set[str]) -> tuple[int, str]:
     first_seen: dict[str, datetime] = {}
     daily_paths: dict[str, list[str]] = defaultdict(list)
