@@ -213,9 +213,11 @@ sudo systemctl reload nginx
 - `/etc/fail2ban/filter.d/`
 - `/etc/fail2ban/jail.d/`
 
-`nginx-vulnscan.local` уже ожидает два источника логов:
+`nginx-vulnscan.local` уже ожидает текущие и свежеротированные источники логов:
 - `/var/log/nginx/access.log`
+- `/var/log/nginx/access.log.1`
 - `/var/log/nginx/scanner-drop.log`
+- `/var/log/nginx/scanner-drop.log.1`
 
 Если нужен allowlist, создайте:
 - `/etc/security-report-bot/scan-whitelist.txt`

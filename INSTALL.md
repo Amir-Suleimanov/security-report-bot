@@ -102,6 +102,13 @@ sudo cp deploy/fail2ban/jail.d/nginx-botsearch.local /etc/fail2ban/jail.d/nginx-
 sudo cp deploy/fail2ban/jail.d/sshd.local /etc/fail2ban/jail.d/sshd.local
 ```
 
+`nginx-vulnscan.local` должен читать не только текущие логи, но и свежеротированные `.1`:
+
+- `/var/log/nginx/access.log`
+- `/var/log/nginx/access.log.1`
+- `/var/log/nginx/scanner-drop.log`
+- `/var/log/nginx/scanner-drop.log.1`
+
 Если нужен allowlist:
 
 ```bash
