@@ -219,6 +219,10 @@ sudo systemctl reload nginx
 - `/var/log/nginx/scanner-drop.log`
 - `/var/log/nginx/scanner-drop.log.1`
 
+Чтобы `fail2ban` гарантированно подхватывал свежий `scanner-drop.log.1` после daily rotation, добавьте reload jail в nginx logrotate postrotate.
+Готовый пример:
+- [deploy/logrotate/nginx-fail2ban-postrotate.conf](deploy/logrotate/nginx-fail2ban-postrotate.conf)
+
 Если нужен allowlist, создайте:
 - `/etc/security-report-bot/scan-whitelist.txt`
 

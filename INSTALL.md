@@ -109,6 +109,12 @@ sudo cp deploy/fail2ban/jail.d/sshd.local /etc/fail2ban/jail.d/sshd.local
 - `/var/log/nginx/scanner-drop.log`
 - `/var/log/nginx/scanner-drop.log.1`
 
+И обновите `nginx` logrotate так, чтобы после ротации выполнялся reload jail:
+
+```bash
+sudo cp deploy/logrotate/nginx-fail2ban-postrotate.conf /etc/logrotate.d/nginx
+```
+
 Если нужен allowlist:
 
 ```bash
