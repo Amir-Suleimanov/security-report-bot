@@ -72,6 +72,7 @@ sudo editor /etc/default/security-report-bot
 - `FAIL2BAN_DB_PATH`
 - `FAIL2BAN_IGNORE_BASE_PATH`
 - `STATE_DB_PATH`
+- `SCANNER_RECONCILE_WINDOW_SEC`
 
 ## 6. Настроить real IP для reverse proxy
 
@@ -215,7 +216,7 @@ sudo systemctl status security-scanner-reconcile.timer
 
 Digest отправляется в `23:50 UTC`.
 
-## 13. Что проверить после запуска
+## 14. Что проверить после запуска
 
 Проверить сервисы:
 
@@ -226,6 +227,7 @@ sudo systemctl status security-report-bot.service
 sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
+sudo systemctl status security-scanner-reconcile.timer
 ```
 
 Проверить логи и jail:
@@ -242,9 +244,10 @@ sudo tail -n 50 /var/log/nginx/access.log
 - inline-кнопки
 - отсутствие ответа для неразрешённых пользователей
 
-## 14. Что агент не должен забыть
+## 15. Что агент не должен забыть
 
 - Бот должен читать `/var/log/nginx/access.log` и при необходимости `access.log.*`
+- Бот и reconcile-джоба должны читать `/var/log/nginx/scanner-drop.log*`
 - Путь из `STATE_DB_PATH` должен быть доступен на запись
 - Не смешивайте scanner allowlist и инфраструктурные исключения: первое храните в `scan-whitelist.txt`, второе в `fail2ban-ignore-base.txt`
 - Не складывайте автоматические `fail2ban`-срабатывания в `manual-denylist.txt` без ручной проверки

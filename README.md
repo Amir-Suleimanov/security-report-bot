@@ -107,6 +107,7 @@ pip install -r requirements.txt
 - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
 - `/etc/fail2ban/jail.d/nginx-botsearch.local`
 - `/etc/fail2ban/jail.d/sshd.local`
+- `/etc/logrotate.d/nginx`
 - `/etc/systemd/system/security-report-bot.service`
 - `/etc/systemd/system/security-daily-ban-digest.service`
 - `/etc/systemd/system/security-daily-ban-digest.timer`
@@ -119,7 +120,9 @@ pip install -r requirements.txt
 
 Файлы, которые должны быть доступны на чтение боту:
 - `/var/log/nginx/access.log`
-- при необходимости rotated logs `/var/log/nginx/access.log.*`
+- `/var/log/nginx/access.log.*`
+- `/var/log/nginx/scanner-drop.log`
+- `/var/log/nginx/scanner-drop.log.*`
 
 Права доступа:
 - пользователь, под которым запускается бот, должен читать nginx access log
@@ -154,6 +157,7 @@ pip install -r requirements.txt
 - `ALLOWLIST_PATH`
 - `MANUAL_DENYLIST_PATH`
 - `FAIL2BAN_IGNORE_BASE_PATH`
+- `SCANNER_RECONCILE_WINDOW_SEC`
 
 ## Установка на новый сервер
 
@@ -342,12 +346,6 @@ sudo systemctl start security-scanner-reconcile.service
 sudo systemctl status security-scanner-reconcile.timer
 ```
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now security-daily-ban-digest.timer
-sudo systemctl status security-daily-ban-digest.timer
-```
-
 Nightly digest будет приходить в `23:50 UTC`.
 
 ## Команды бота
@@ -412,6 +410,7 @@ sudo systemctl status security-report-bot.service
 sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
+sudo systemctl status security-scanner-reconcile.timer
 sudo fail2ban-client status nginx-vulnscan
 sudo tail -n 50 /var/log/nginx/access.log
 ```
@@ -437,13 +436,14 @@ sudo tail -n 50 /var/log/nginx/access.log
 10. Создать `/etc/security-report-bot/fail2ban-ignore-base.txt`.
 11. Создать `/etc/security-report-bot/manual-denylist.txt`.
 12. Перезапустить `fail2ban` и проверить, что jail `nginx-vulnscan` появился.
-13. Положить `systemd` unit-файлы бота, nightly digest, allowlist sync и denylist sync.
+13. Положить `systemd` unit-файлы бота, nightly digest, allowlist sync, denylist sync и scanner-reconcile.
 14. Выполнить `systemctl daemon-reload`.
 15. Включить и запустить `security-report-bot.service`.
 16. Включить `security-allowlist-sync.path` и один раз запустить `security-allowlist-sync.service`.
 17. Включить `security-manual-denylist-sync.path` и один раз запустить `security-manual-denylist-sync.service`.
 18. Включить и запустить `security-daily-ban-digest.timer`.
-19. Проверить, что бот отвечает на `/report`, а timer запланирован на `23:50 UTC`.
+19. Включить и запустить `security-scanner-reconcile.timer`.
+20. Проверить, что бот отвечает на `/report`, nightly digest запланирован на `23:50 UTC`, а reconcile timer активен.
 
 ## Что адаптировать под другой сайт
 

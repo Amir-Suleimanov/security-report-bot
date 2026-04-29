@@ -11,6 +11,7 @@
 - Все авторазбаны отключены. Nightly job только отправляет digest.
 - IP из allowlist не должны баниться повторно, но их suspicious requests должны быть видны в отчётах.
 - Вручную подтверждённые вредоносные IP должны идти в отдельный persistent denylist, а не смешиваться с обычными временными банами `fail2ban`.
+- Если `fail2ban` пропускает scanner hit, его должна добрать отдельная reconcile-джоба по логам, а не оператор вручную.
 
 ## Deploy order
 1. Скопировать репозиторий на новый сервер.
@@ -21,7 +22,9 @@
    - `deploy/fail2ban/jail.d/*.local`
 4. Убедиться, что `nginx` и `fail2ban` читают нужные логи.
 5. Поднять `security-report-bot.service`.
-6. Включить `security-daily-ban-digest.timer` только если нужен nightly digest.
+6. Включить `security-manual-denylist-sync.path` и `security-allowlist-sync.path`.
+7. Включить `security-scanner-reconcile.timer`.
+8. Включить `security-daily-ban-digest.timer` только если нужен nightly digest.
 
 ## Preflight for another agent
 - Установить `python3`, `python3-venv`, `nginx`, `fail2ban`, `iproute2`.
@@ -39,6 +42,7 @@
   - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
   - `/etc/fail2ban/jail.d/nginx-botsearch.local`
   - `/etc/fail2ban/jail.d/sshd.local`
+  - `/etc/logrotate.d/nginx`
   - `/etc/systemd/system/security-report-bot.service`
   - `/etc/systemd/system/security-daily-ban-digest.service`
   - `/etc/systemd/system/security-daily-ban-digest.timer`
@@ -46,15 +50,19 @@
   - `/etc/systemd/system/security-allowlist-sync.path`
   - `/etc/systemd/system/security-manual-denylist-sync.service`
   - `/etc/systemd/system/security-manual-denylist-sync.path`
+  - `/etc/systemd/system/security-scanner-reconcile.service`
+  - `/etc/systemd/system/security-scanner-reconcile.timer`
 - Не запускать бот до тех пор, пока не заполнены `TELEGRAM_BOT_TOKEN` и `ALLOWED_CHAT_IDS`.
 
 ## Runtime assumptions
 - Бот должен иметь доступ к:
   - `/var/log/nginx/access.log*`
+  - `/var/log/nginx/scanner-drop.log*`
   - `fail2ban-client`
   - `ss`
 - `STATE_DB_PATH` должен быть доступен на запись.
 - Для Cloudflare-проксируемых сайтов нужен real IP config, иначе в логах будут edge IP вместо клиентов.
+- После ротации `nginx` логов должен выполняться reload `nginx-vulnscan`, но финальной страховкой всё равно служит `security-scanner-reconcile.timer`.
 
 ## Files operators edit most often
 - `.env`
