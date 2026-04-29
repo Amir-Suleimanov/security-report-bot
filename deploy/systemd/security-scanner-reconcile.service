@@ -1,0 +1,12 @@
+[Unit]
+Description=Reconcile Missed Scanner IPs into Manual Denylist
+After=network-online.target fail2ban.service ufw.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/security-report-bot
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/default/security-report-bot
+ExecStart=/opt/security-report-bot/.venv/bin/python -m app.scanner_reconcile

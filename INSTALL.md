@@ -170,6 +170,8 @@ sudo cp deploy/systemd/security-allowlist-sync.service /etc/systemd/system/secur
 sudo cp deploy/systemd/security-allowlist-sync.path /etc/systemd/system/security-allowlist-sync.path
 sudo cp deploy/systemd/security-manual-denylist-sync.service /etc/systemd/system/security-manual-denylist-sync.service
 sudo cp deploy/systemd/security-manual-denylist-sync.path /etc/systemd/system/security-manual-denylist-sync.path
+sudo cp deploy/systemd/security-scanner-reconcile.service /etc/systemd/system/security-scanner-reconcile.service
+sudo cp deploy/systemd/security-scanner-reconcile.timer /etc/systemd/system/security-scanner-reconcile.timer
 sudo systemctl daemon-reload
 ```
 
@@ -201,6 +203,14 @@ sudo systemctl status security-manual-denylist-sync.path
 ```bash
 sudo systemctl enable --now security-daily-ban-digest.timer
 sudo systemctl status security-daily-ban-digest.timer
+```
+
+## 13. Включить scanner-gap reconcile
+
+```bash
+sudo systemctl enable --now security-scanner-reconcile.timer
+sudo systemctl start security-scanner-reconcile.service
+sudo systemctl status security-scanner-reconcile.timer
 ```
 
 Digest отправляется в `23:50 UTC`.

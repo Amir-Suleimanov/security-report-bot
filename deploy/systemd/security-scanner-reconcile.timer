@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Scanner Reconcile Every 5 Minutes
+
+[Timer]
+OnUnitActiveSec=5min
+OnBootSec=2min
+Persistent=true
+Unit=security-scanner-reconcile.service
+
+[Install]
+WantedBy=timers.target

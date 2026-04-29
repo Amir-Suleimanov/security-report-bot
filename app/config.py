@@ -20,6 +20,7 @@ class Settings:
     manual_denylist_path: Path
     fail2ban_ignore_base_path: Path
     fail2ban_ignore_output_path: Path
+    scanner_reconcile_window_sec: int
 
     @classmethod
     def load(cls) -> "Settings":
@@ -46,6 +47,7 @@ class Settings:
         fail2ban_ignore_output_path = Path(
             os.environ.get("FAIL2BAN_IGNORE_OUTPUT_PATH", "/etc/fail2ban/jail.d/nginx-allowlist.local")
         )
+        scanner_reconcile_window_sec = int(os.environ.get("SCANNER_RECONCILE_WINDOW_SEC", "900"))
         return cls(
             bot_token=bot_token,
             allowed_chat_ids=allowed_chat_ids,
@@ -60,4 +62,5 @@ class Settings:
             manual_denylist_path=manual_denylist_path,
             fail2ban_ignore_base_path=fail2ban_ignore_base_path,
             fail2ban_ignore_output_path=fail2ban_ignore_output_path,
+            scanner_reconcile_window_sec=scanner_reconcile_window_sec,
         )

@@ -25,6 +25,7 @@
 - чтение `nginx access.log`
 - чтение статуса `fail2ban`
 - daily digest через `systemd timer`
+- scanner-gap reconcile через `systemd timer`
 
 ## Структура
 
@@ -113,6 +114,8 @@ pip install -r requirements.txt
 - `/etc/systemd/system/security-allowlist-sync.path`
 - `/etc/systemd/system/security-manual-denylist-sync.service`
 - `/etc/systemd/system/security-manual-denylist-sync.path`
+- `/etc/systemd/system/security-scanner-reconcile.service`
+- `/etc/systemd/system/security-scanner-reconcile.timer`
 
 Файлы, которые должны быть доступны на чтение боту:
 - `/var/log/nginx/access.log`
@@ -314,6 +317,30 @@ sudo systemctl status security-allowlist-sync.path
 - `/etc/systemd/system/`
 
 Затем:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now security-daily-ban-digest.timer
+sudo systemctl status security-daily-ban-digest.timer
+```
+
+### 9. Включить scanner-gap reconcile
+
+Скопируйте:
+- [deploy/systemd/security-scanner-reconcile.service](deploy/systemd/security-scanner-reconcile.service)
+- [deploy/systemd/security-scanner-reconcile.timer](deploy/systemd/security-scanner-reconcile.timer)
+
+в:
+- `/etc/systemd/system/`
+
+Затем:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now security-scanner-reconcile.timer
+sudo systemctl start security-scanner-reconcile.service
+sudo systemctl status security-scanner-reconcile.timer
+```
 
 ```bash
 sudo systemctl daemon-reload
