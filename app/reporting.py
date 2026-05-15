@@ -51,6 +51,8 @@ class ReportSnapshot:
     nginx_state: str
     fail2ban_state: str
     monitored_service_state: str
+    fail2ban_banned_ips: list[str]
+    manual_denylist_ips: list[str]
     banned_ips: list[str]
     banned_today: list[str]
     suspicious: list[SuspiciousRequest]
@@ -102,6 +104,8 @@ class Reporter:
             nginx_state=nginx_state.strip() or "unknown",
             fail2ban_state=fail2ban_state.strip() or "unknown",
             monitored_service_state=monitored_service_state.strip() or "unknown",
+            fail2ban_banned_ips=sorted(fail2ban_banned_ips),
+            manual_denylist_ips=sorted(manual_denylist.entries),
             banned_ips=blocked_entries,
             banned_today=banned_today,
             suspicious=suspicious,
@@ -119,7 +123,9 @@ class Reporter:
             f"Окно: последние <code>{self.format_interval(snapshot.window_sec)}</code>",
             "",
             f"• Сервисы: {self._format_services(snapshot)}",
-            f"• Сейчас в бане: <b>{len(snapshot.banned_ips)}</b>",
+            f"• Сейчас в fail2ban: <b>{len(snapshot.fail2ban_banned_ips)}</b>",
+            f"• В постоянном denylist: <b>{len(snapshot.manual_denylist_ips)}</b>",
+            f"• Всего блокировок: <b>{len(snapshot.banned_ips)}</b>",
             f"• Новых банов за сегодня: <b>{len(snapshot.banned_today)}</b>",
             f"• Подозрительных событий: <b>{len(snapshot.suspicious)}</b>",
             f"• HTTP(S)-подключения: <b>{self._format_connections_brief(snapshot.connections)}</b>",
@@ -141,6 +147,8 @@ class Reporter:
         body = "\n".join(snapshot.banned_ips)
         return (
             f"<b>Блокировки сейчас: {len(snapshot.banned_ips)}</b>\n"
+            f"fail2ban: <b>{len(snapshot.fail2ban_banned_ips)}</b> | "
+            f"manual denylist: <b>{len(snapshot.manual_denylist_ips)}</b>\n"
             f"<blockquote expandable><code>{escape(body)}</code></blockquote>"
         )
 
