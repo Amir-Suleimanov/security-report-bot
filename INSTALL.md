@@ -71,6 +71,7 @@ sudo editor /etc/default/security-report-bot
 - `MANUAL_DENYLIST_PATH`
 - `FAIL2BAN_DB_PATH`
 - `FAIL2BAN_IGNORE_BASE_PATH`
+- `FAIL2BAN_PERSISTENT_PATH`
 - `STATE_DB_PATH`
 - `SCANNER_RECONCILE_WINDOW_SEC`
 
@@ -145,6 +146,12 @@ sudo editor /etc/security-report-bot/manual-denylist.txt
 sudo touch /etc/security-report-bot/manual-denylist.txt
 ```
 
+Для устойчивости после reboot создайте ещё и persistent snapshot active web-банов:
+
+```bash
+sudo cp deploy/server/fail2ban-persistent-bans.txt /etc/security-report-bot/fail2ban-persistent-bans.txt
+```
+
 Шаблоны уже включают Cloudflare CIDR по умолчанию:
 - `scan-whitelist.txt` для Telegram-бота
 - `manual-denylist.txt` для постоянных ручных блокировок в `ufw`
@@ -173,6 +180,9 @@ sudo cp deploy/systemd/security-manual-denylist-sync.service /etc/systemd/system
 sudo cp deploy/systemd/security-manual-denylist-sync.path /etc/systemd/system/security-manual-denylist-sync.path
 sudo cp deploy/systemd/security-scanner-reconcile.service /etc/systemd/system/security-scanner-reconcile.service
 sudo cp deploy/systemd/security-scanner-reconcile.timer /etc/systemd/system/security-scanner-reconcile.timer
+sudo cp deploy/systemd/security-fail2ban-ban-restore.service /etc/systemd/system/security-fail2ban-ban-restore.service
+sudo cp deploy/systemd/security-fail2ban-ban-snapshot.service /etc/systemd/system/security-fail2ban-ban-snapshot.service
+sudo cp deploy/systemd/security-fail2ban-ban-snapshot.timer /etc/systemd/system/security-fail2ban-ban-snapshot.timer
 sudo systemctl daemon-reload
 ```
 
@@ -228,7 +238,19 @@ sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
 sudo systemctl status security-scanner-reconcile.timer
+sudo systemctl status security-fail2ban-ban-snapshot.timer
 ```
+
+## 15. Включить snapshot/restore active fail2ban web-банов
+
+```bash
+sudo systemctl enable security-fail2ban-ban-restore.service
+sudo systemctl enable --now security-fail2ban-ban-snapshot.timer
+sudo systemctl start security-fail2ban-ban-snapshot.service
+sudo systemctl status security-fail2ban-ban-snapshot.timer
+```
+
+Это нужно затем, чтобы после reboot `fail2ban` не поднимался с заметно меньшим active set без объяснимой причины в отчёте.
 
 Проверить логи и jail:
 
@@ -244,12 +266,13 @@ sudo tail -n 50 /var/log/nginx/access.log
 - inline-кнопки
 - отсутствие ответа для неразрешённых пользователей
 
-## 15. Что агент не должен забыть
+## 16. Что агент не должен забыть
 
 - Бот должен читать `/var/log/nginx/access.log` и при необходимости `access.log.*`
 - Бот и reconcile-джоба должны читать `/var/log/nginx/scanner-drop.log*`
 - Путь из `STATE_DB_PATH` должен быть доступен на запись
 - Не смешивайте scanner allowlist и инфраструктурные исключения: первое храните в `scan-whitelist.txt`, второе в `fail2ban-ignore-base.txt`
 - Не складывайте автоматические `fail2ban`-срабатывания в `manual-denylist.txt` без ручной проверки
+- Не пропускайте `security-fail2ban-ban-restore.service` и `security-fail2ban-ban-snapshot.timer`, если нужны стабильные цифры после reboot
 - Не коммитьте реальный `.env`
 - Не используйте Docker как основной способ продакшен-развёртывания, если нужен доступ к host logs и `fail2ban-client`

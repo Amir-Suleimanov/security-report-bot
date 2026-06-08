@@ -51,6 +51,7 @@ class ReportSnapshot:
     nginx_state: str
     fail2ban_state: str
     monitored_service_state: str
+    fail2ban_started_at: datetime | None
     fail2ban_banned_ips: list[str]
     manual_denylist_ips: list[str]
     banned_ips: list[str]
@@ -75,6 +76,9 @@ class Reporter:
         hostname = await self._run("hostname")
         nginx_state = await self._run("systemctl is-active nginx")
         fail2ban_state = await self._run("systemctl is-active fail2ban")
+        fail2ban_started_at = self._parse_systemd_timestamp(
+            await self._run("systemctl show fail2ban --property=ActiveEnterTimestamp --value")
+        )
         monitored_service_state = (
             await self._run(f"systemctl is-active {self.settings.monitored_service_name}")
             if self.settings.monitored_service_name
@@ -104,6 +108,7 @@ class Reporter:
             nginx_state=nginx_state.strip() or "unknown",
             fail2ban_state=fail2ban_state.strip() or "unknown",
             monitored_service_state=monitored_service_state.strip() or "unknown",
+            fail2ban_started_at=fail2ban_started_at,
             fail2ban_banned_ips=sorted(fail2ban_banned_ips),
             manual_denylist_ips=sorted(manual_denylist.entries),
             banned_ips=blocked_entries,
@@ -130,6 +135,10 @@ class Reporter:
             f"• Подозрительных событий: <b>{len(snapshot.suspicious)}</b>",
             f"• HTTP(S)-подключения: <b>{self._format_connections_brief(snapshot.connections)}</b>",
         ]
+        if snapshot.fail2ban_started_at is not None:
+            lines.append(
+                f"• Последний старт fail2ban: <code>{snapshot.fail2ban_started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</code>"
+            )
         return "\n".join(lines)
 
     def format_banned_today(self, snapshot: ReportSnapshot) -> str:
@@ -189,6 +198,18 @@ class Reporter:
         )
         stdout, _ = await process.communicate()
         return stdout.decode("utf-8", errors="replace").strip()
+
+    @staticmethod
+    def _parse_systemd_timestamp(value: str) -> datetime | None:
+        text = value.strip()
+        if not text or text == "n/a":
+            return None
+        for fmt in ("%a %Y-%m-%d %H:%M:%S UTC", "%a %Y-%m-%d %H:%M:%S %Z"):
+            try:
+                return datetime.strptime(text, fmt).replace(tzinfo=UTC)
+            except ValueError:
+                continue
+        return None
 
     def _analyze_logs(
         self,

@@ -1,0 +1,15 @@
+[Unit]
+Description=Restore Persistent Fail2Ban Web Bans After Boot
+After=network-online.target ufw.service fail2ban.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/security-report-bot
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/default/security-report-bot
+ExecStart=/opt/security-report-bot/.venv/bin/python -m app.fail2ban_persistent restore
+
+[Install]
+WantedBy=multi-user.target

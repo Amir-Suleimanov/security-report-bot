@@ -1,0 +1,3 @@
+# Persistent snapshot of active nginx-vulnscan bans.
+# This file is maintained automatically by app.fail2ban_persistent snapshot.
+# It is restored back into fail2ban after reboot.

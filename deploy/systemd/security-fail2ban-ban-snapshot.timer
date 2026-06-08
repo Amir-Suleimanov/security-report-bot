@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodically Snapshot Active Fail2Ban Web Bans
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=security-fail2ban-ban-snapshot.service
+
+[Install]
+WantedBy=timers.target

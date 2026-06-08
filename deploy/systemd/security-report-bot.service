@@ -1,7 +1,7 @@
 [Unit]
 Description=Security Report Telegram Bot
-After=network-online.target fail2ban.service
-Wants=network-online.target
+After=network-online.target fail2ban.service security-fail2ban-ban-restore.service
+Wants=network-online.target security-fail2ban-ban-restore.service
 
 [Service]
 Type=simple

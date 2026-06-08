@@ -11,6 +11,7 @@
 - отправляет nightly digest в `23:50 UTC` со списком новых IP за день и путями, по которым они ходили
 - поддерживает allowlist IP, которые не должны повторно баниться, но должны оставаться под наблюдением
 - поддерживает отдельный persistent denylist для вручную подтверждённых вредоносных IP
+- сохраняет active web-баны `fail2ban` и восстанавливает их после reboot
 
 ## Возможности
 
@@ -26,6 +27,7 @@
 - чтение статуса `fail2ban`
 - daily digest через `systemd timer`
 - scanner-gap reconcile через `systemd timer`
+- snapshot и boot-time restore для active web-банов `fail2ban`
 
 ## Структура
 
@@ -34,6 +36,7 @@
 - `app/storage.py` — SQLite state для интервала отчётов
 - `app/daily_digest.py` — nightly digest “новые баны за день”
 - `app/allowlist_sync.py` — синхронизация scanner allowlist в `fail2ban ignoreip`
+- `app/fail2ban_persistent.py` — snapshot и restore active web-банов `fail2ban`
 - `app/fail2ban_db.py` — чтение ban events из `fail2ban.sqlite3`
 - `app/config.py` — загрузка env
 - `requirements.txt` — Python-зависимости проекта
@@ -103,6 +106,7 @@ pip install -r requirements.txt
 - `/etc/security-report-bot/scan-whitelist.txt`
 - `/etc/security-report-bot/fail2ban-ignore-base.txt`
 - `/etc/security-report-bot/manual-denylist.txt`
+- `/etc/security-report-bot/fail2ban-persistent-bans.txt`
 - `/etc/fail2ban/filter.d/nginx-vulnscan.conf`
 - `/etc/fail2ban/jail.d/nginx-vulnscan.local`
 - `/etc/fail2ban/jail.d/nginx-botsearch.local`
@@ -117,6 +121,9 @@ pip install -r requirements.txt
 - `/etc/systemd/system/security-manual-denylist-sync.path`
 - `/etc/systemd/system/security-scanner-reconcile.service`
 - `/etc/systemd/system/security-scanner-reconcile.timer`
+- `/etc/systemd/system/security-fail2ban-ban-restore.service`
+- `/etc/systemd/system/security-fail2ban-ban-snapshot.service`
+- `/etc/systemd/system/security-fail2ban-ban-snapshot.timer`
 
 Файлы, которые должны быть доступны на чтение боту:
 - `/var/log/nginx/access.log`
@@ -157,6 +164,7 @@ pip install -r requirements.txt
 - `ALLOWLIST_PATH`
 - `MANUAL_DENYLIST_PATH`
 - `FAIL2BAN_IGNORE_BASE_PATH`
+- `FAIL2BAN_PERSISTENT_PATH`
 - `SCANNER_RECONCILE_WINDOW_SEC`
 
 ## Установка на новый сервер
@@ -251,6 +259,12 @@ sudo systemctl reload nginx
 `/etc/fail2ban/jail.d/nginx-allowlist.local` больше не редактируется вручную:
 - он генерируется из `scan-whitelist.txt` и `fail2ban-ignore-base.txt`
 - это убирает дрейф между ботом и `fail2ban`
+
+Для устойчивости после reboot создайте ещё и persistent snapshot active web-банов:
+- `/etc/security-report-bot/fail2ban-persistent-bans.txt`
+
+по шаблону:
+- [deploy/server/fail2ban-persistent-bans.txt](deploy/server/fail2ban-persistent-bans.txt)
 
 После этого:
 
@@ -348,6 +362,28 @@ sudo systemctl status security-scanner-reconcile.timer
 
 Nightly digest будет приходить в `23:50 UTC`.
 
+### 10. Включить snapshot/restore active fail2ban web-банов
+
+Скопируйте:
+- [deploy/systemd/security-fail2ban-ban-restore.service](deploy/systemd/security-fail2ban-ban-restore.service)
+- [deploy/systemd/security-fail2ban-ban-snapshot.service](deploy/systemd/security-fail2ban-ban-snapshot.service)
+- [deploy/systemd/security-fail2ban-ban-snapshot.timer](deploy/systemd/security-fail2ban-ban-snapshot.timer)
+
+в:
+- `/etc/systemd/system/`
+
+Затем:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable security-fail2ban-ban-restore.service
+sudo systemctl enable --now security-fail2ban-ban-snapshot.timer
+sudo systemctl start security-fail2ban-ban-snapshot.service
+sudo systemctl status security-fail2ban-ban-snapshot.timer
+```
+
+Это закрывает сценарий, когда после reboot `fail2ban` поднимается с меньшим active set и отчёт выглядит как будто “что-то сломалось”.
+
 ## Команды бота
 
 - `/report` — отчёт сейчас
@@ -382,6 +418,19 @@ Persistent denylist нужен для IP, которые:
 - бот считает такие IP заблокированными даже если они уже не видны в текущем `fail2ban-client status`
 - для быстрого добавления можно использовать `python -m app.manual_denylist add 203.0.113.10`
 
+## Persistent fail2ban snapshot
+
+Для `nginx-vulnscan` используется `bantime = -1`, но после reboot live active set `fail2ban` может восстановиться не полностью.
+
+Чтобы после reboot количество web-банов не выглядело случайно “просевшим”, проект хранит отдельный snapshot:
+- файл `/etc/security-report-bot/fail2ban-persistent-bans.txt`
+- periodic snapshot через `python -m app.fail2ban_persistent snapshot`
+- boot-time restore через `python -m app.fail2ban_persistent restore`
+
+Это отдельный механизм, не замена `manual-denylist.txt`:
+- `manual denylist` — вручную подтверждённые IP, которые должны блокироваться всегда
+- `fail2ban persistent snapshot` — автоматическое восстановление active web-банов после reboot
+
 ## Docker
 
 В репозитории есть [Dockerfile](Dockerfile), но это скорее packaging-артефакт, чем основной способ установки.
@@ -411,6 +460,7 @@ sudo systemctl status security-allowlist-sync.path
 sudo systemctl status security-manual-denylist-sync.path
 sudo systemctl status security-daily-ban-digest.timer
 sudo systemctl status security-scanner-reconcile.timer
+sudo systemctl status security-fail2ban-ban-snapshot.timer
 sudo fail2ban-client status nginx-vulnscan
 sudo tail -n 50 /var/log/nginx/access.log
 ```
@@ -435,15 +485,17 @@ sudo tail -n 50 /var/log/nginx/access.log
 9. Создать `/etc/security-report-bot/scan-whitelist.txt`.
 10. Создать `/etc/security-report-bot/fail2ban-ignore-base.txt`.
 11. Создать `/etc/security-report-bot/manual-denylist.txt`.
-12. Перезапустить `fail2ban` и проверить, что jail `nginx-vulnscan` появился.
-13. Положить `systemd` unit-файлы бота, nightly digest, allowlist sync, denylist sync и scanner-reconcile.
-14. Выполнить `systemctl daemon-reload`.
-15. Включить и запустить `security-report-bot.service`.
-16. Включить `security-allowlist-sync.path` и один раз запустить `security-allowlist-sync.service`.
-17. Включить `security-manual-denylist-sync.path` и один раз запустить `security-manual-denylist-sync.service`.
-18. Включить и запустить `security-daily-ban-digest.timer`.
-19. Включить и запустить `security-scanner-reconcile.timer`.
-20. Проверить, что бот отвечает на `/report`, nightly digest запланирован на `23:50 UTC`, а reconcile timer активен.
+12. Создать `/etc/security-report-bot/fail2ban-persistent-bans.txt`.
+13. Перезапустить `fail2ban` и проверить, что jail `nginx-vulnscan` появился.
+14. Положить `systemd` unit-файлы бота, nightly digest, allowlist sync, denylist sync, scanner-reconcile и fail2ban snapshot/restore.
+15. Выполнить `systemctl daemon-reload`.
+16. Включить и запустить `security-report-bot.service`.
+17. Включить `security-allowlist-sync.path` и один раз запустить `security-allowlist-sync.service`.
+18. Включить `security-manual-denylist-sync.path` и один раз запустить `security-manual-denylist-sync.service`.
+19. Включить и запустить `security-daily-ban-digest.timer`.
+20. Включить и запустить `security-scanner-reconcile.timer`.
+21. Включить `security-fail2ban-ban-restore.service` и `security-fail2ban-ban-snapshot.timer`.
+22. Проверить, что бот отвечает на `/report`, nightly digest запланирован на `23:50 UTC`, reconcile timer активен, а snapshot timer снимает active web-баны.
 
 ## Что адаптировать под другой сайт
 

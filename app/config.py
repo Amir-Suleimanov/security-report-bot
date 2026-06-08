@@ -20,6 +20,7 @@ class Settings:
     manual_denylist_path: Path
     fail2ban_ignore_base_path: Path
     fail2ban_ignore_output_path: Path
+    fail2ban_persistent_path: Path
     scanner_reconcile_window_sec: int
 
     @classmethod
@@ -47,6 +48,9 @@ class Settings:
         fail2ban_ignore_output_path = Path(
             os.environ.get("FAIL2BAN_IGNORE_OUTPUT_PATH", "/etc/fail2ban/jail.d/nginx-allowlist.local")
         )
+        fail2ban_persistent_path = Path(
+            os.environ.get("FAIL2BAN_PERSISTENT_PATH", "/etc/security-report-bot/fail2ban-persistent-bans.txt")
+        )
         scanner_reconcile_window_sec = int(os.environ.get("SCANNER_RECONCILE_WINDOW_SEC", "900"))
         return cls(
             bot_token=bot_token,
@@ -62,5 +66,6 @@ class Settings:
             manual_denylist_path=manual_denylist_path,
             fail2ban_ignore_base_path=fail2ban_ignore_base_path,
             fail2ban_ignore_output_path=fail2ban_ignore_output_path,
+            fail2ban_persistent_path=fail2ban_persistent_path,
             scanner_reconcile_window_sec=scanner_reconcile_window_sec,
         )
