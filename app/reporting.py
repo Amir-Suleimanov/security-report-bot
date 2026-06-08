@@ -121,6 +121,7 @@ class Reporter:
         return self.format_report(await self.collect_snapshot(window_sec))
 
     def format_report(self, snapshot: ReportSnapshot) -> str:
+        overlap = len(set(snapshot.fail2ban_banned_ips) & set(snapshot.manual_denylist_ips))
         lines = [
             f"<b>{escape(self.settings.report_title)}</b>",
             f"Сервер: <code>{escape(snapshot.hostname)}</code>",
@@ -130,11 +131,13 @@ class Reporter:
             f"• Сервисы: {self._format_services(snapshot)}",
             f"• Сейчас в fail2ban: <b>{len(snapshot.fail2ban_banned_ips)}</b>",
             f"• В постоянном denylist: <b>{len(snapshot.manual_denylist_ips)}</b>",
-            f"• Всего блокировок: <b>{len(snapshot.banned_ips)}</b>",
+            f"• Всего уникальных блокировок: <b>{len(snapshot.banned_ips)}</b>",
             f"• Новых банов за сегодня: <b>{len(snapshot.banned_today)}</b>",
             f"• Подозрительных событий: <b>{len(snapshot.suspicious)}</b>",
             f"• HTTP(S)-подключения: <b>{self._format_connections_brief(snapshot.connections)}</b>",
         ]
+        if overlap:
+            lines.append(f"• Совпадает в двух списках: <b>{overlap}</b>")
         if snapshot.fail2ban_started_at is not None:
             lines.append(
                 f"• Последний старт fail2ban: <code>{snapshot.fail2ban_started_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</code>"
