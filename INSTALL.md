@@ -273,6 +273,6 @@ sudo tail -n 50 /var/log/nginx/access.log
 - Путь из `STATE_DB_PATH` должен быть доступен на запись
 - Не смешивайте scanner allowlist и инфраструктурные исключения: первое храните в `scan-whitelist.txt`, второе в `fail2ban-ignore-base.txt`
 - Не складывайте автоматические `fail2ban`-срабатывания в `manual-denylist.txt` без ручной проверки
-- Не пропускайте `security-fail2ban-ban-restore.service` и `security-fail2ban-ban-snapshot.timer`, если нужны стабильные цифры после reboot
+- Не пропускайте `security-fail2ban-ban-restore.service` и `security-fail2ban-ban-snapshot.timer`, если нужны стабильные цифры после reboot и если web-баны должны самовосстанавливаться при выпадении из live active set
 - Не коммитьте реальный `.env`
 - Не используйте Docker как основной способ продакшен-развёртывания, если нужен доступ к host logs и `fail2ban-client`

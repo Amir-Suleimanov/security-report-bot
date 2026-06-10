@@ -96,12 +96,31 @@ def get_effective_allowlist() -> tuple[set[str], list[ipaddress._BaseNetwork]]:
 
 def cmd_snapshot(path: Path) -> int:
     allow_exact, allow_networks = get_effective_allowlist()
-    live_entries = [
-        ip for ip in get_live_banned_ips() if not is_allowlisted(ip, allow_exact, allow_networks)
-    ]
-    save_entries(path, live_entries)
-    print(f"Saved {len(live_entries)} active {JAIL} bans to {path}")
-    return 0
+    persisted_entries = load_entries(path)
+    live_entries = [ip for ip in get_live_banned_ips() if not is_allowlisted(ip, allow_exact, allow_networks)]
+    desired = sorted(set(persisted_entries) | set(live_entries))
+    save_entries(path, desired)
+
+    current = set(live_entries)
+    missing = [ip for ip in desired if ip not in current]
+    restored = 0
+    failed: list[tuple[str, str]] = []
+    for ip in missing:
+        try:
+            run(["fail2ban-client", "set", JAIL, "banip", ip])
+            restored += 1
+        except subprocess.CalledProcessError as exc:
+            failed.append((ip, (exc.stderr or exc.stdout or "").strip()))
+
+    print(f"Persistent snapshot file: {path}")
+    print(f"Previously persisted bans: {len(persisted_entries)}")
+    print(f"Currently active live bans: {len(live_entries)}")
+    print(f"Merged persistent bans: {len(desired)}")
+    print(f"Restored missing live bans: {restored}")
+    print(f"Failed restores: {len(failed)}")
+    for ip, reason in failed:
+        print(f"{ip} :: {reason}")
+    return 0 if not failed else 1
 
 
 def cmd_restore(path: Path) -> int:

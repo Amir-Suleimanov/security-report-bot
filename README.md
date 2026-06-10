@@ -362,7 +362,7 @@ sudo systemctl status security-scanner-reconcile.timer
 
 Nightly digest будет приходить в `23:50 UTC`.
 
-### 10. Включить snapshot/restore active fail2ban web-банов
+### 10. Включить persistent sync/restore active fail2ban web-банов
 
 Скопируйте:
 - [deploy/systemd/security-fail2ban-ban-restore.service](deploy/systemd/security-fail2ban-ban-restore.service)
@@ -382,7 +382,14 @@ sudo systemctl start security-fail2ban-ban-snapshot.service
 sudo systemctl status security-fail2ban-ban-snapshot.timer
 ```
 
-Это закрывает сценарий, когда после reboot `fail2ban` поднимается с меньшим active set и отчёт выглядит как будто “что-то сломалось”.
+Это закрывает два сценария:
+- после reboot `fail2ban` поднимается с меньшим active set;
+- старые finite-баны уменьшают active set, хотя policy уже должна быть вечной.
+
+`security-fail2ban-ban-snapshot.service` работает как self-healing sync:
+- объединяет live active set с persistent snapshot;
+- не даёт persistent snapshot “усохнуть” вниз;
+- возвращает missing IP обратно в `nginx-vulnscan`, если они пропали из live active set.
 
 ## Команды бота
 
